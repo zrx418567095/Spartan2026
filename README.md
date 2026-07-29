@@ -1,5 +1,7 @@
 # Spartan Hub · Super Beast 2026
 
+部署域名：**`https://spartanultra.allenboard.cn/`**
+
 斯巴达勇士超级野兽赛（崇礼云顶站）6 人团队的轻量团队管理网页原型。
 
 ## 功能特性
@@ -105,3 +107,9 @@ SPARTAN_TOKEN=ghp_xxx... bash ./push.sh --tags
 - 障碍与赛道图：官方公众号文章（`https://mp.weixin.qq.com/s/I_OLuaRZYkg9CCd2RkdIaQ`）附图
 - 补给站与关门时间：官方赛事图
 - 天气：[Open-Meteo](https://open-meteo.com/)
+
+## 关联文档
+
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) —— 总体架构、部署、运维
+- [`docs/MEMBERS_AND_AUTH.md`](./docs/MEMBERS_AND_AUTH.md) —— 成员、登录、权限矩阵
+- [`docs/db-schema.md`](./docs/db-schema.md) —— SQLite DDL、ER、字段映射

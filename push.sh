@@ -16,7 +16,7 @@ set -euo pipefail
 # ====== 参数区（可被同名环境变量覆盖） ======
 TOKEN="${SPARTAN_TOKEN:-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}"
 USERNAME="${SPARTAN_USER:-zrx418567095}"
-REMOTE_URL="${SPARTAN_REMOTE:-https://github.com/zrx418567095/Spartan2026.git}"
+REMOTE_URL="${SPARTAN_REMOTE:-https://github.com/zrx418567095/Spartan2026.git}"  # 项目：spartanultra.allenboard.cn
 PROXY="${SPARTAN_PROXY:-http://127.0.0.1:7890}"
 GIT_USER_NAME="${GIT_USER_NAME:-Spartan Hub Team}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-team@spartan-hub.local}"

@@ -2,5 +2,6 @@
 
 | 文档 | 说明 |
 |---|---|
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | 技术架构、API、数据模型概要、部署流程、备份与运维 |
-| [`db-schema.md`](./db-schema.md) | 数据库 Schema（SQLite）：DDL、ER 关系、字段映射、索引与并发 |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | 总体架构、部署、运维、备份 |
+| [`MEMBERS_AND_AUTH.md`](./MEMBERS_AND_AUTH.md) | 成员、登录、权限矩阵、字段隔离 |
+| [`db-schema.md`](./db-schema.md) | SQLite DDL、ER 关系、字段映射、索引与并发 |

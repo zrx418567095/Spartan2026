@@ -1,28 +1,48 @@
 # 技术架构与部署手册
 
 > Spartan Hub · Super Beast 2026
-> 部署目标：腾讯云轻量应用服务器（单实例低配置）
-> 文档版本：v0.1
-> 适用代码版本：`v0.1.0`
+> **部署目标：腾讯云轻量应用服务器 2C2G，已具备**
+> **域名：`spartanultra.allenboard.cn`，TLS 证书已具备**
+> 文档版本：v0.2
+> 适用代码版本：`v0.1.x`
 
-本文对应**两段式部署**：
+本文对应**当前实情的部署形态**：
 
-- **第一段（当前原型）**：纯静态前端 + Node.js API + SQLite，一台轻量服务器搞定
-- **第二段（可选）**：把 API 拆出独立进程 / 拆 MySQL / 加微信扫码登录
+- **第一段**：纯静态前端（已部署）+ Node.js API + SQLite（本次新增）
+- **第二段（可选）**：拆前后端、引入微信扫码登录
 
 如果只是给 6 个人的小队用，第一段足够。
 
 ---
 
-## 0. 设计原则
+## 0. 现状清单（v0.2 已对齐）
+
+| 项 | 当前值 |
+|---|---|
+| 服务器 | 腾讯云轻量 2C2G（已具备） |
+| 系统 | Ubuntu 22.04 LTS |
+| 域名 | `spartanultra.allenboard.cn` |
+| 证书 | 已具备（用户提供，需确认证书部署形态） |
+| 当前已部署 | 一个静态页（占位）。将被全量静态站 + API 替换 |
+| DNS | 需在 DNS 服务商把 `spartanultra.allenboard.cn` 解析到服务器公网 IP |
+| 数据库 | 计划用 SQLite，单文件 |
+| 镜像入口 | `https://github.com/zrx418567095/Spartan2026` |
+
+---
+
+## 0.1 设计原则
 
 | 原则 | 具体做法 |
 |---|---|
-| **零依赖外部 SaaS** | 数据走自有 SQLite；天气走 Open-Meteo；不再接任何第三方鉴权服务 |
+| **零外部依赖** | 数据走自有 SQLite；天气走 Open-Meteo；不再接任何第三方鉴权服务 |
 | **极简部署** | 一台 2C2G 轻量服务器即可；不需要 Docker；不需要 K8s |
 | **静态优先** | 公共页面纯 HTML/CSS/JS；只在登录后调用 API |
+| **管理员全权** | 一个 admin 账号可读 / 写任何成员的费用、装备、任务；不必借助多角色分层 |
+| **成员限自己** | 成员只能读 / 写自己的记录；不能看见其他成员的支付明细 |
+| **姓名全拼登录** | 账号名就是姓名全拼（小写），仅作"我能输入什么"的最小校验；服务端做存在性校验后签发 JWT |
 | **可审计** | Git 单仓管理；`push.sh` 一键同步；不回写任何凭证 |
 | **易于备份** | SQLite 单文件；按天 cron 备份 + 异地 |
+
 
 ---
 
@@ -108,90 +128,77 @@ spartan-hub/
 ### 3.1 通用约定
 
 - 协议：`HTTPS`
+- 域：`https://spartanultra.allenboard.cn`
 - 路径前缀：`/api/v1`
 - 数据格式：`application/json; charset=utf-8`
-- 时区：返回 UTC 时间戳与 `Asia/Shanghai` 字符串并存
+- 时区：返回 UTC 秒 + `Asia/Shanghai` 字符串
 - 鉴权：除注册/登录与公开内容外，所有写操作要求 `Authorization: Bearer <token>`
+- 速率限制：`20 r/s` 起步，`/api/v1/auth/login` 单独限 `5 r/m`
+- CORS：`Access-Control-Allow-Origin: https://spartanultra.allenboard.cn`（不带尾 `/`）
 
-### 3.2 路由清单
+### 3.2 路由清单（贴合"管理员全权 / 成员限己"）
 
-| Method | Path | 说明 | 鉴权 |
-|---|---|---|---|
-| GET | `/api/v1/public/itinerary` | 公共行程 | 否 |
-| GET | `/api/v1/public/course` | 公共赛道路况 | 否 |
-| GET | `/api/v1/public/aid-stations` | 公共水站数据 | 否 |
-| GET | `/api/v1/public/cutoffs` | 公共关门时间表 | 否 |
-| GET | `/api/v1/weather` | 实时天气缓存代理 | 否 |
-| POST | `/api/v1/auth/login` | 账号名登录（团队内用） | 否 |
-| POST | `/api/v1/auth/logout` | 退出登录 | 是 |
-| GET | `/api/v1/members` | 成员列表 | 是 |
-| GET | `/api/v1/members/:id/expenses` | 个人费用 | 是（本人或 admin） |
-| POST | `/api/v1/members/:id/expenses` | 新增费用 | 是（admin） |
-| PATCH | `/api/v1/expenses/:id` | 更新支付状态 | 是（admin） |
-| GET | `/api/v1/members/:id/gear` | 个人装备状态 | 是（本人或 admin） |
-| PUT | `/api/v1/members/:id/gear` | 覆盖个人装备状态 | 是（本人） |
-| GET | `/api/v1/members/:id/tasks` | 个人任务 | 是（本人） |
-| PATCH | `/api/v1/tasks/:id` | 更新任务状态 | 是（本人） |
+| Method | Path | 说明 | 鉴权 | 备注 |
+|---|---|---|---|---|
+| GET | `/api/v1/public/itinerary` | 公共行程 | 否 | 静态返回 |
+| GET | `/api/v1/public/course` | 公共赛道路况 | 否 | |
+| GET | `/api/v1/public/aid-stations` | 8 个水站 + 9 个补给点 | 否 | |
+| GET | `/api/v1/public/cutoffs` | 5 个关门时间表 | 否 | |
+| GET | `/api/v1/public/event` | 赛事标题、副标等 | 否 | |
+| GET | `/api/v1/weather` | 实时天气（Open-Meteo 缓存） | 否 | 30 分钟缓存 |
+| POST | `/api/v1/auth/login` | 姓名全拼登录 | 否 | 单 IP `5/m` |
+| POST | `/api/v1/auth/logout` | 撤销 session | 是 | |
+| GET | `/api/v1/auth/me` | 当前登录成员 | 是 | |
+| GET | `/api/v1/members` | 成员列表（仅公开字段） | 是 | 仅返回 `id / display / group / role` |
+| GET | `/api/v1/members/:id/expenses` | 个人费用 | **本人或 admin** | |
+| POST | `/api/v1/members/:id/expenses` | 新增费用 | **仅 admin** | |
+| PATCH | `/api/v1/expenses/:id` | 全字段更新（含金额 / 状态） | **仅 admin** | |
+| POST | `/api/v1/expenses/:id/payments` | 追加已付款（成员自己上报） | **本人或 admin** | 用于"我已转账 ¥300" |
+| GET | `/api/v1/members/:id/gear` | 个人装备状态 | **本人或 admin** | |
+| PUT | `/api/v1/members/:id/gear` | 整表覆盖个人装备状态 | **本人或 admin** | |
+| GET | `/api/v1/members/:id/tasks` | 个人任务 | **本人或 admin** | |
+| PATCH | `/api/v1/tasks/:id` | 完成 / 取消 | **本人或 admin** | |
+| GET | `/api/v1/expenses/summary` | 团队费用总览（金额、待付） | **仅 admin** | |
+| GET | `/api/v1/gear/progress` | 团队装备就位率 | **仅 admin** | |
+| GET | `/api/v1/admin/audit` | 审计日志 | **仅 admin** | |
 
-### 3.3 数据模型（草案）
+权限矩阵参见 `MEMBERS_AND_AUTH.md` §3。
 
-```sql
-members
-  id          TEXT PRIMARY KEY,         -- m1, m2, ...
-  username    TEXT UNIQUE NOT NULL,    -- member01
-  display     TEXT NOT NULL,           -- 张一
-  group_name  TEXT,                    -- 广州组
-  role        TEXT NOT NULL,           -- member / admin
-  created_at  INTEGER
+### 3.3 数据模型（摘要）
 
-sessions
-  token       TEXT PRIMARY KEY,        -- 随机 32 字节
-  member_id   TEXT NOT NULL,
-  expires_at  INTEGER,
-  created_at  INTEGER
+详细 DDL 见 `db-schema.md`，关键表：
 
-expenses
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  member_id    TEXT NOT NULL,
-  item         TEXT NOT NULL,
-  category     TEXT,
-  amount_cents INTEGER NOT NULL,        -- 用分避免浮点
-  paid_cents   INTEGER NOT NULL DEFAULT 0,
-  due_date     TEXT,
-  note         TEXT,
-  updated_at   INTEGER
-  FOREIGN KEY (member_id) REFERENCES members(id)
+- `members` — 业务 ID + `username`（全拼）+ `display`（中文名）+ `role`
+- `sessions` — JWT 撤销表
+- `expenses` — 金额 `amount_cents` 整数
+- `payments` — 成员追加的已付记录（新增，见 `db-schema.md` v0.2 说明）
+- `gear_status` — `(member_id, item_name)` 复合主键
+- `tasks` — 个人任务
+- `announcements` — 公共与定向公告
+- `audit_log` — 全部写操作留痕
 
-gear_status
-  member_id    TEXT NOT NULL,
-  item_name    TEXT NOT NULL,
-  level        TEXT,                    -- mandatory / recommended / optional
-  status       INTEGER,                 -- 0 未确认 / 1 已有 / 2 待购买 / 3 已装包
-  PRIMARY KEY (member_id, item_name)
+### 3.4 鉴权策略（v0.2）
 
-tasks
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  member_id   TEXT NOT NULL,
-  title       TEXT NOT NULL,
-  done        INTEGER NOT NULL DEFAULT 0,
-  due_at      INTEGER,
-  created_at  INTEGER
-```
-
-### 3.4 鉴权策略（第一段简化）
-
-第一阶段保留原型的"账号名登录"，但服务端做防滥用：
+第一阶段落地"姓名全拼 + 服务端存在性校验"模型：
 
 - 客户端 POST `/api/v1/auth/login { username }`
-- 服务端查 `members.username` 是否存在 → 失败 401
-- 服务端签发 HMAC-SHA256 JWT，payload `{ member_id, role, exp }`，密钥在环境变量
-- 客户端保存 token 到 `localStorage`
-- 后续每个写请求带 `Authorization: Bearer <token>`
-- 路由中间件校验 token，过期 8 小时
+- 服务端只接受满足正则的全小写拼音（`/^[a-z]+(\.[a-z]+)?$/`），同时查 `members.username`
+- 命中后签发 HMAC-SHA256 JWT：
+  - payload `{ member_id, role, jti, iat, exp }`
+  - 8 小时过期
+  - HttpOnly + SameSite=Strict Cookie
+- 路由中间件 `requireAuth(role?)` 校验 JWT，挂到 `req.auth`
+- 资源中间件 `requireSelfOrAdmin((req) => req.params.id)` 限制访问
 
-> ⚠️ 这是"团队内部"信任模型：知道账号名 + 服务器地址就能登录一人。
-> 上线公网前必须替换为：邀请码 + 短信验证码 或 微信扫码登录。
-> 这一替换在第二段落地，预计架构几乎不变。
+签名密钥在 `server/.env` 的 `JWT_SECRET`（生产建议 64 字节随机，每次重启可轮换）。
+
+> ⚠️ 本模型仍属"团队内部信任"：知道他人姓名全拼就能以对方身份登录。
+> 候选加固（不在 v0.2 范围内）：
+> - 服务端短信验证码
+> - 微信扫码 + 后台白名单
+> - 邀请码 + 全拼组合
+> 后续按需新增 `auth_methods` 表，字段 `member_id / method / secret_hash / enabled`。
+
 
 ---
 
@@ -256,59 +263,145 @@ assets/关门时间详情     293.2 KB
 
 ---
 
-## 6. 部署流程
+## 6. 部署流程（`spartanultra.allenboard.cn`）
 
-### 6.1 单机一次性部署
+### 6.0 准备清单
 
-**步骤 1：初始化系统**
+| 项 | 值 |
+|---|---|
+| 服务商 | 腾讯云轻量 |
+| 域名 | `spartanultra.allenboard.cn` |
+| 解析 | A 记录 → 服务器公网 IP |
+| 证书 | 你已具备；稍后配置在 §6.5 |
+| 服务器用户 | `spartan`（标准账户，非 root） |
+| 部署目录 | `/home/spartan/app/spartan-hub` |
+
+### 6.1 服务器初始化
 
 ```bash
-sudo apt update
-sudo apt install -y nginx nodejs npm sqlite3 git curl
-# Node 18 → 20
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y nginx sqlite3 git curl
+# 装 Node 20
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -
 sudo apt install -y nodejs
 sudo npm i -g pm2
 ```
 
-**步骤 2：克隆代码**
+### 6.2 创建用户并拉取代码
 
 ```bash
 sudo useradd -m -s /bin/bash spartan
-sudo -u spartan git clone https://github.com/zrx418567095/Spartan2026.git /home/spartan/app
-cd /home/spartan/app
+sudo mkdir -p /home/spartan/app
+sudo chown -R spartan:spartan /home/spartan/app
+sudo -u spartan git clone https://github.com/zrx418567095/Spartan2026.git /home/spartan/app/spartan-hub
+cd /home/spartan/app/spartan-hub
+sudo -u spartan git checkout v0.1.0   # 或 HEAD，按需
 ```
 
-**步骤 3：安装 Node 依赖 + 启动**
+### 6.3 安装后端依赖并初始化数据库
 
 ```bash
-cd server
-npm ci --omit=dev
-pm2 start index.js --name spartan-api -i 2
-pm2 save
-pm2 startup systemd
+cd /home/spartan/app/spartan-hub/server
+sudo -u spartan npm ci --omit=dev
+sudo -u spartan cp .env.example .env
+sudo -u spartan nano .env    # 填 JWT_SECRET（64 字节随机）
+sudo -u spartan node scripts/init.js   # 建表
+sudo -u spartan node scripts/seed.js   # 成员 + 公告种子
 ```
 
-**步骤 4：Nginx 配置**
+`.env` 必填项：
 
-`/etc/nginx/sites-available/spartan`：
+```ini
+PORT=3000
+NODE_ENV=production
+SQLITE_PATH=/var/lib/spartan/data/spartan.db
+JWT_SECRET=$(openssl rand -hex 64)
+ALLOW_ORIGIN=https://spartanultra.allenboard.cn
+TRUSTED_PROXY=true
+```
+
+预创建数据目录：
+
+```bash
+sudo mkdir -p /var/lib/spartan/data
+sudo chown -R spartan:spartan /var/lib/spartan
+```
+
+### 6.4 用 PM2 启动 API
+
+```bash
+sudo -u spartan pm2 start index.js --name spartan-api -i 1
+sudo -u spartan pm2 save
+sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u spartan --hp /home/spartan
+sudo systemctl enable pm2-spartan
+```
+
+> 推荐 `-i 1` 而不是 `-i 2`：SQLite 单文件 + WAL 在多 writer 进程下会触发 `SQLITE_BUSY`。单进程 + Node 异步 I/O 完全够 6 人小组用。
+
+### 6.5 部署 Nginx
+
+`/etc/nginx/sites-available/spartan-ultra`：
 
 ```nginx
+# 80 → 443 重定向 + ACME 备用
 server {
-  listen 80 default_server;
-  server_name your-domain.cn www.your-domain.cn;
-  root /home/spartan/app;
+  listen 80;
+  listen [::]:80;
+  server_name spartanultra.allenboard.cn;
+  root /home/spartan/app/spartan-hub;
+  location ^~ /.well-known/acme-challenge/ { allow all; }
+  location / { return 301 https://$host$request_uri; }
+}
+
+# 443 主站
+server {
+  listen 443 ssl http2;
+  listen [::]:443 ssl http2;
+  server_name spartanultra.allenboard.cn;
+
+  ssl_certificate     /etc/nginx/ssl/spartanultra.fullchain.pem;
+  ssl_certificate_key /etc/nginx/ssl/spartanultra.key;
+  ssl_protocols       TLSv1.2 TLSv1.3;
+  ssl_ciphers         HIGH:!aNULL:!MD5;
+  ssl_prefer_server_ciphers off;
+  ssl_session_cache shared:SSL:10m;
+  http2_push_preload on;
+
+  root /home/spartan/app/spartan-hub;
   index index.html;
+  server_tokens off;
+
+  # 安全头
+  add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;
+  add_header X-Frame-Options "SAMEORIGIN" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "no-referrer-when-downgrade" always;
+  add_header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self' https://cdnjs.cloudflare.com; connect-src 'self' https://api.open-meteo.com" always;
 
   # 静态资源缓存
   location ~* \.(css|js|png|jpg|jpeg|webp|svg|woff2?)$ {
     expires 7d;
-    add_header Cache-Control "public, max-age=604800, immutable";
+    add_header Cache-Control "public, max-age=604800" always;
     try_files $uri =404;
   }
 
-  # 后端 API
-  location /api/ {
+  # 登录接口独立限速
+  limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+  location = /api/v1/auth/login {
+    limit_req zone=login burst=10 nodelay;
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_read_timeout 30s;
+  }
+
+  # 普通 API 限速
+  limit_req_zone $binary_remote_addr zone=api:10m rate=20r/s;
+  location /api/v1/ {
+    limit_req zone=api burst=40 nodelay;
     proxy_pass http://127.0.0.1:3000;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -320,6 +413,61 @@ server {
 
   # SPA 入口
   location / {
+    try_files $uri $uri/ /index.html;
+  }
+
+  # 健康检查
+  location = /healthz { access_log off; return 200 "ok"; add_header Content-Type text/plain; }
+}
+```
+
+把用户已具备的 `fullchain.pem` 与 `.key` 放在 `/etc/nginx/ssl/` 下：
+
+```bash
+sudo mkdir -p /etc/nginx/ssl
+sudo cp /path/to/your/spartanultra.fullchain.pem /etc/nginx/ssl/
+sudo cp /path/to/your/spartanultra.key /etc/nginx/ssl/
+sudo chmod 600 /etc/nginx/ssl/spartanultra.key
+sudo chmod 644 /etc/nginx/ssl/spartanultra.fullchain.pem
+```
+
+启用站点：
+
+```bash
+sudo ln -s /etc/nginx/sites-available/spartan-ultra /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 6.6 防火墙
+
+```bash
+sudo ufw allow 'Nginx Full'
+sudo ufw enable
+```
+
+腾讯云轻量控制台 → 防火墙 → 放行 `80/443/22`，来源 `0.0.0.0/0`。
+
+### 6.7 验收清单
+
+```bash
+# 健康检查
+curl -I https://spartanultra.allenboard.cn/healthz
+
+# 公共接口
+curl -s https://spartanultra.allenboard.cn/api/v1/public/event | head
+
+# 登录接口（应返回 401 with 正确 username 时）
+curl -s -i -X POST https://spartanultra.allenboard.cn/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"zhangyi"}'
+```
+
+### 6.8 不需要的步骤
+
+- **不再申请 acme.sh 证书**：证书已具备
+- **不再备案流程**：服务器与域名都已具备
+- **不需要 Docker / K8s / CI**：单实例 + 手动 `bash ./push.sh` 已够
     try_files $uri $uri/ /index.html;
   }
 
