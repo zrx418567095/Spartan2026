@@ -1,0 +1,19 @@
+# dependencies / build
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+
+# editors
+.vscode/
+.idea/
+*.swp
+
+# python http server logs (可选)
+*.pid
+
+# 抓取 / 调试 / 备份
+.playwright-cli/
+view-source_*.html
+*.tmp
