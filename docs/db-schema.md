@@ -1,0 +1,434 @@
+# 数据库 Schema（SQLite）
+
+> 版本：v0.1
+> 适用代码：`server/db.js`（下一轮即将实现）
+> 引擎：SQLite 3.40+
+> 字符：UTF-8
+> 时区：所有 `INTEGER` 时间戳为 UTC 秒；客户端按 `Asia/Shanghai` 渲染
+
+本文是 `docs/ARCHITECTURE.md` §3 数据模型一节的细化，提供可直接执行的 DDL。
+
+---
+
+## 0. 设计要点
+
+- **金额一律用 `INTEGER` 的分（cents）**，避免浮点误差
+- **时间戳一律用 `INTEGER` 保存 UTC 秒**，跨时区无歧义
+- **主键策略**：业务表用业务 ID（`m1` / `m2`），避免自增 ID 暴露
+- **状态码用 `INTEGER` + 注释**，避免 `ENUM`
+- **不建外键约束**：依赖应用层事务保证一致性；SQLite 外键限制反而易踩坑
+- **不写关联删除**：数据软保留（`archived_at`），便于审计
+
+---
+
+## 1. ER 关系
+
+```
+members 1───* sessions      1 个成员可有多次登录态
+members 1───* expenses     个人费用 1:N
+members 1───* gear_status  个人装备状态 1:N
+members 1───* tasks        个人任务 1:N
+members 1───* expenses  关联付款人（payer_id）
+announcements       1───* announcement_targets 公告 × 目标成员
+audit_log           记录所有写操作
+```
+
+---
+
+## 2. 命名规范
+
+- 表名：小写 + 下划线（`snake_case`），复数
+- 主键：`id`（业务 ID）或 `*_id`（外键）
+- 时间字段：`*_at` 后缀（`created_at`、`updated_at`、`expires_at`、`archived_at`）
+- 布尔：使用 `INTEGER` (0/1)
+- 金额：`amount_cents`
+- 枚举：用 `CHECK` 约束或注释说明
+
+---
+
+## 3. DDL（直接执行）
+
+```sql
+PRAGMA foreign_keys = OFF;
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA busy_timeout = 5000;
+
+-- ============================================================
+-- members：成员 / 管理员
+-- ============================================================
+CREATE TABLE members (
+  id          TEXT PRIMARY KEY,                  -- 'm1'、'm2' ...；admin 为 'a1'
+  username    TEXT NOT NULL UNIQUE,              -- 'member01'、'admin'，登录用
+  display     TEXT NOT NULL,                     -- 显示名 '张一'
+  group_name  TEXT,                              -- '广州组' / '北京汇合' / '组织方'
+  role        TEXT NOT NULL CHECK (role IN ('member', 'admin')),
+  -- 团队内"账号名登录"的过渡字段；首次部署后由种子写一次
+  pin         TEXT,                              -- 仅 6 位本地 PIN（弱加密），不存明文
+  pin_locked  INTEGER NOT NULL DEFAULT 0,        -- 是否锁定（连续错误 5 次）
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  archived_at INTEGER                            -- NULL=正常；非 NULL=软删
+);
+
+CREATE INDEX idx_members_username ON members(username);
+CREATE INDEX idx_members_archived  ON members(archived_at);
+
+-- ============================================================
+-- sessions：JWT 撤销表（可选）
+-- 当改为 JWT 后，下发 JWT；登出或重置密码时把 jti 加入黑名单
+-- 第一阶段先不启用此表，仅保留结构
+-- ============================================================
+CREATE TABLE sessions (
+  jti        TEXT PRIMARY KEY,                    -- JWT ID
+  member_id  TEXT NOT NULL,
+  issued_at  INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  revoked_at INTEGER,                            -- NULL=有效；非 NULL=吊销
+  ip         TEXT,
+  user_agent TEXT,
+  FOREIGN KEY (member_id) REFERENCES members(id)
+);
+
+CREATE INDEX idx_sessions_member   ON sessions(member_id);
+CREATE INDEX idx_sessions_expires  ON sessions(expires_at);
+
+-- ============================================================
+-- expenses：个人费用（含团队公共费用按人头分摊后写入）
+-- amount_cents = 总金额；paid_cents = 已经实付（多人可累计，但累计后 sum 可能超 amount）
+-- status: 0=未生成 / 1=待支付 / 2=部分支付 / 3=已结清 / 4=已取消
+-- ============================================================
+CREATE TABLE expenses (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  member_id     TEXT NOT NULL,                    -- 应付方
+  payer_id      TEXT,                             -- 实际垫付方（可空，NULL=未垫付）
+  item          TEXT NOT NULL,                    -- '云顶大酒店 2 晚'
+  category      TEXT,                              -- '住宿' / '交通' / '餐饮' / '赛事' / '其他'
+  amount_cents  INTEGER NOT NULL CHECK (amount_cents >= 0),
+  paid_cents    INTEGER NOT NULL DEFAULT 0 CHECK (paid_cents >= 0),
+  status        INTEGER NOT NULL DEFAULT 1
+                CHECK (status IN (0, 1, 2, 3, 4)),
+  due_date      TEXT,                              -- 'YYYY-MM-DD'
+  note          TEXT,
+  created_by    TEXT,                              -- 操作人（管理员或成员本人）
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL,
+  archived_at   INTEGER,
+  CHECK (paid_cents <= amount_cents)
+);
+
+CREATE INDEX idx_expenses_member   ON expenses(member_id);
+CREATE INDEX idx_expenses_payer    ON expenses(payer_id);
+CREATE INDEX idx_expenses_status   ON expenses(status) WHERE archived_at IS NULL;
+CREATE INDEX idx_expenses_due      ON expenses(due_date) WHERE archived_at IS NULL;
+
+-- ============================================================
+-- gear_status：个人装备状态
+-- status: 0=未确认 / 1=已有 / 2=待购买 / 3=已装包
+-- level : mandatory / recommended / optional（决定是否必带）
+-- ============================================================
+CREATE TABLE gear_status (
+  member_id    TEXT NOT NULL,
+  item_name    TEXT NOT NULL,                     -- 与 publicGear[].name 对应
+  level        TEXT NOT NULL CHECK (level IN ('mandatory', 'recommended', 'optional')),
+  status       INTEGER NOT NULL DEFAULT 0
+               CHECK (status IN (0, 1, 2, 3)),
+  note         TEXT,
+  updated_at   INTEGER NOT NULL,
+  PRIMARY KEY (member_id, item_name)
+);
+
+CREATE INDEX idx_gear_member_level ON gear_status(member_id, level);
+
+-- ============================================================
+-- tasks：个人任务
+-- done: 0/1；due_at: UTC 秒
+-- ============================================================
+CREATE TABLE tasks (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  member_id   TEXT NOT NULL,
+  title       TEXT NOT NULL,
+  note        TEXT,
+  done        INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0, 1)),
+  due_at      INTEGER,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  archived_at INTEGER
+);
+
+CREATE INDEX idx_tasks_member_done ON tasks(member_id, done) WHERE archived_at IS NULL;
+CREATE INDEX idx_tasks_due         ON tasks(due_at) WHERE archived_at IS NULL;
+
+-- ============================================================
+-- announcements：公告（公共与个人）
+-- priority: high / mid / low；scope: public / member / admin
+-- target_member_id IS NULL 表示公共公告
+-- ============================================================
+CREATE TABLE announcements (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  title            TEXT NOT NULL,
+  body             TEXT NOT NULL,
+  priority         TEXT NOT NULL DEFAULT 'mid'
+                    CHECK (priority IN ('high', 'mid', 'low')),
+  scope            TEXT NOT NULL DEFAULT 'public'
+                    CHECK (scope IN ('public', 'member', 'admin')),
+  target_member_id TEXT,
+  publish_at       INTEGER NOT NULL,
+  expires_at       INTEGER,
+  created_by       TEXT NOT NULL,
+  archived_at      INTEGER,
+  FOREIGN KEY (target_member_id) REFERENCES members(id)
+);
+
+CREATE INDEX idx_ann_pub  ON announcements(publish_at) WHERE archived_at IS NULL;
+CREATE INDEX idx_ann_scope ON announcements(scope, target_member_id);
+
+-- ============================================================
+-- audit_log：所有写操作都留痕
+-- 关键场景：管理员改费用、成员改装备状态、成员完成任务
+-- 第一阶段先不强制写入，应用层主动调用
+-- ============================================================
+CREATE TABLE audit_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_id    TEXT NOT NULL,                      -- 谁操作
+  action      TEXT NOT NULL,                      -- 'expense.update' / 'gear.put' ...
+  target      TEXT NOT NULL,                      -- 'expense:32'
+  before      TEXT,                               -- JSON before
+  after       TEXT,                               -- JSON after
+  ip          TEXT,
+  ua          TEXT,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE INDEX idx_audit_target ON audit_log(target);
+CREATE INDEX idx_audit_actor  ON audit_log(actor_id, created_at);
+```
+
+---
+
+## 4. 种子数据示例
+
+```sql
+-- 6 名成员 + 1 个管理员
+INSERT INTO members (id, username, display, group_name, role, created_at, updated_at) VALUES
+  ('m1', 'member01', '张一', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('m2', 'member02', '陈二', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('m3', 'member03', '王三', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('m4', 'member04', '李四', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('m5', 'member05', '赵五', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('m6', 'member06', '孙六', '北京汇合','member', strftime('%s','now'), strftime('%s','now')),
+  ('a1', 'admin',    '管理员','组织方',  'admin',  strftime('%s','now'), strftime('%s','now'));
+
+-- 每位成员的待办任务样例
+INSERT INTO tasks (member_id, title, note, done, due_at, created_at, updated_at) VALUES
+  ('m1', '8/12 完成装备检查',           NULL, 1, strftime('%s','2026-08-12 12:00'), strftime('%s','now'), strftime('%s','now')),
+  ('m1', '8/13 19:00 番禺广场集合',    NULL, 0, strftime('%s','2026-08-13 11:00'), strftime('%s','now'), strftime('%s','now')),
+  ('m4', '支付云顶酒店拼房 ¥800',      NULL, 0, strftime('%s','2026-08-10 23:59'), strftime('%s','now'), strftime('%s','now')),
+  ('m6', '8/13 前确认北京汇合航班',    NULL, 1, strftime('%s','2026-08-13 00:00'), strftime('%s','now'), strftime('%s','now'));
+
+-- 公共公告样例
+INSERT INTO announcements (title, body, priority, scope, publish_at, created_by) VALUES
+  ('8/13 19:00 番禺广场集合', '广州组在番禺广场地铁站集合，预计 19:10 出发。', 'high', 'public',
+   strftime('%s','now'), 'a1'),
+  ('G7831 票已统一出票',       '8/14 07:29 北京北 → 太子城，二等座。',            'mid',  'public',
+   strftime('%s','now'), 'a1'),
+  ('赛事规则更新',              '障碍 #14 调整，详细变更见规则页。',               'low',  'public',
+   strftime('%s','now'), 'a1');
+```
+
+---
+
+## 5. 视图（可选）
+
+```sql
+-- 个人费用汇总
+CREATE VIEW v_member_expense_summary AS
+SELECT
+  member_id,
+  COUNT(*) AS items,
+  SUM(amount_cents) AS total_cents,
+  SUM(paid_cents)   AS paid_cents,
+  SUM(amount_cents - paid_cents) AS pending_cents,
+  SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) AS settled_items
+FROM expenses
+WHERE archived_at IS NULL
+GROUP BY member_id;
+
+-- 团队总览
+CREATE VIEW v_team_overview AS
+SELECT
+  COUNT(*)                                        AS members,
+  SUM(CASE WHEN role='member' THEN 1 ELSE 0 END)  AS athletes,
+  SUM(CASE WHEN role='admin' THEN 1 ELSE 0 END)   AS admins
+FROM members
+WHERE archived_at IS NULL;
+```
+
+---
+
+## 6. 与原型的字段映射
+
+原型 (`js/data.js`) 是客户端硬编码数据；切换到后端后，字段含义保持不变。
+
+| 原型字段 | 数据库字段 | 备注 |
+|---|---|---|
+| `event.*` | 不入表 | 静态常量，前后端同源（如 `data.json`） |
+| `itinerary[]` | 不入表 | 静态常量 |
+| `itinerary[].items[].highlight` | 不入表 | 属于渲染层 |
+| `users[username]` | `members` | username 是登录名，id 是内部主键 |
+| `users[].id` (`m1`/`m2`) | `members.id` | 直接对齐 |
+| `users[].name` | `members.display` | |
+| `users[].group` | `members.group_name` | |
+| `users[].role` | `members.role` | |
+| `expensesByUser[m1][*]` | `expenses.member_id='m1'` | 一行对应数据库一行 |
+| `expenses[].amount` | `expenses.amount_cents` | 客户端渲染时 ÷100 |
+| `expenses[].paid` | `expenses.paid_cents` | |
+| `expenses[].due` (`'2026-08-10'`) | `expenses.due_date` | 文本 |
+| `expenses[].category` | `expenses.category` | |
+| `gearStatusByUser[m1][item]` | `gear_status` | key 拆成 `(member_id, item_name)` |
+| `gearStatus[].status` (0/1/2/3) | `gear_status.status` | 一致 |
+| `tasksByUser[m1][*]` | `tasks.member_id='m1'` | 一行对应一条 task |
+| `tasks[].title` / `.done` | `tasks.title` / `tasks.done` | |
+| `announcements[]` | `announcements` | 公共 + 定向 |
+
+---
+
+## 7. 金额与时间约定
+
+### 7.1 金额
+
+- 数据库全部 `INTEGER`（分）
+- API 返回时一律返回 `amount_cents` 和 `paid_cents` 整数
+- 客户端拿到后做 `value / 100` 与 `Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' })` 渲染
+
+### 7.2 时间
+
+- 数据库 `INTEGER` 是 Unix 秒（UTC）
+- API 返回时同时给：
+
+```json
+{
+  "due_at": 1723324800,
+  "due_at_iso": "2026-08-10T00:00:00+08:00",
+  "due_date": "2026-08-10"
+}
+```
+
+- `due_date` 是纯文本 `YYYY-MM-DD`，客户端原样展示
+- `due_at_iso` 已按 `Asia/Shanghai` 渲染
+
+### 7.3 状态枚举速查
+
+| 字段 | 值 | 含义 |
+|---|---|---|
+| `expenses.status` | 1 | 待支付 |
+| | 2 | 部分支付 |
+| | 3 | 已结清 |
+| | 4 | 已取消 |
+| `gear_status.status` | 0 | 未确认 |
+| | 1 | 已有 |
+| | 2 | 待购买 |
+| | 3 | 已装包 |
+| `gear_status.level` | mandatory / recommended / optional |
+| `tasks.done` | 0 / 1 |
+| `announcements.priority` | high / mid / low |
+| `announcements.scope` | public / member / admin |
+| `members.role` | member / admin |
+
+---
+
+## 8. 索引与查询模式
+
+| 表 | 高频查询 | 索引 |
+|---|---|---|
+| `members` | 登录：`WHERE username = ? AND archived_at IS NULL` | `idx_members_username` 唯一索引已覆盖 |
+| `expenses` | 成员费用列表：`WHERE member_id = ? AND archived_at IS NULL` | `idx_expenses_member` |
+| | 待办筛选：`WHERE status IN (1,2) AND due_date < ? AND archived_at IS NULL` | `idx_expenses_status` + `idx_expenses_due` |
+| | 垫付列表：`WHERE payer_id = ?` | `idx_expenses_payer` |
+| `gear_status` | 个人装备面板：`WHERE member_id = ?` | 主键覆盖 |
+| | 强制装备全员进度：`WHERE level = 'mandatory'` | 复合索引 `(member_id, level)` |
+| `tasks` | 个人待办：`WHERE member_id = ? AND done = 0` | 主键覆盖 + `idx_tasks_member_done` |
+
+---
+
+## 9. 索引健康
+
+上线后每月跑一次：
+
+```sql
+ANALYZE;
+SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name NOT LIKE 'sqlite_%';
+```
+
+每月用 `sqlite3 spartan.db 'PRAGMA integrity_check;'` 校验文件。
+
+---
+
+## 10. WAL 与并发
+
+- 启动脚本加 `PRAGMA journal_mode = WAL;`，允许多读 + 单写并发
+- 同时最多 1 个 writer；reader 不阻塞
+- PM2 多 worker 部署必须谨慎：
+
+  - 方案 A（推荐）：`pm2 start server/index.js -i 1`，单进程 + Node 自带异步 I/O
+  - 方案 B（高并发）：前置负载均衡 + 多个 1-worker 实例
+  - SQLite 单文件 + WAL 在多进程并发写时会出现 `SQLITE_BUSY`，务必加 `busy_timeout = 5000` 与重试
+
+---
+
+## 11. 数据保留与归档
+
+- 业务数据**不硬删除**，统一 `archived_at`
+- 软删 90 天后由 admin 一键物理清理由脚本完成：
+
+```sql
+DELETE FROM expenses WHERE archived_at IS NOT NULL AND archived_at < strftime('%s','now','-90 days');
+DELETE FROM tasks    WHERE archived_at IS NOT NULL AND archived_at < strftime('%s','now','-90 days');
+```
+
+- 清表前生成 SQL 备份到 `/var/lib/spartan/backups/`
+
+---
+
+## 12. 兼容性矩阵
+
+| 客户端版本 | 服务端 schema 版本 | 说明 |
+|---|---|---|
+| v0.1.0 (原型) | v0.1 | 客户端走 `localStorage`；服务端 API 不启用 |
+| v0.2.0 (登录后端化) | v0.1 | 新增 `members` / `sessions`，客户端逐步迁移 |
+| v0.3.0 (完整后端化) | v0.1 | `expenses` / `gear_status` / `tasks` 全部走 API |
+
+每次 `js/data.js` 字段调整，先升 schema 再升 API 再升前端，避免数据迁移断档。
+
+---
+
+## 13. 完整 DDL 脚本
+
+把 §3 与 §5 合并成单一 `server/scripts/init.sql`，由 `npm run db:init` 触发：
+
+```bash
+# server/package.json
+{
+  "scripts": {
+    "db:init": "node scripts/init.js",
+    "db:seed": "node scripts/seed.js",
+    "start": "node index.js"
+  }
+}
+```
+
+`scripts/init.js` 用 `better-sqlite3` 读取 `init.sql`，启用 WAL 后逐条 `exec()`，所有 `CREATE TABLE IF NOT EXISTS` 幂等。
+
+---
+
+## 14. 演进要点
+
+1. 当团队规模扩大、需要多人协作时，迁移到 PostgreSQL：
+   - `INTEGER` → `BIGINT`
+   - `TEXT` → `TEXT`（一致）
+   - `strftime('%s','now')` → `EXTRACT(EPOCH FROM NOW())::BIGINT`
+2. 增加 `wechat_openid` 字段，登录走微信扫码
+3. 增加 `event_id` 字段以支持多赛事（数据库 schema v0.2）
+
+具体演进时间在 `docs/ARCHITECTURE.md` §14 演进路线 给出。
+
