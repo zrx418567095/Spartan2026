@@ -238,10 +238,15 @@
           <h2 class="sec-title">最新公告</h2>
           <div class="sec-line"></div>
           <div>
-            ${announcements.map(a => `
-              <div class="announce">
+            ${announcements.map((a, idx) => `
+              <div class="announce announce-clickable" data-ann-idx="${idx}" role="button" tabindex="0">
                 <div class="priority ${a.priority === 'high' ? '' : 'low'}">●</div>
-                <div><h4>${a.title}</h4><div class="time">${a.time}</div></div>
+                <div>
+                  <h4>${a.title}</h4>
+                  <div class="time">${a.time}</div>
+                  ${a.body ? `<div class="ann-preview">${a.body.slice(0, 60)}${a.body.length > 60 ? '…' : ''}</div>` : ''}
+                </div>
+                <div class="ann-arrow"><i class="fa-solid fa-chevron-right"></i></div>
               </div>
             `).join('')}
           </div>
@@ -597,11 +602,12 @@
             ${SPARTAN_HUB.publicGear.map(item => {
               const status = gearMap[item.name] != null ? gearMap[item.name] : 0;
               return `
-                <div class="card">
+                <div class="card gear-card" data-gear-name="${item.name}" data-gear-status="${status}" style="cursor:pointer;">
                   <span class="tag ${item.level}">${item.category}</span>
                   <h4>${item.name}</h4>
                   <p>${item.level === 'mandatory' ? '官方强制装备' : item.level === 'recommended' ? '强烈建议' : '个人自选'}</p>
                   <span class="gear-status s-${status}" style="margin-top:10px;">${Summary.gearStatusLabel(status)}</span>
+                  <div style="margin-top:8px;font-size:0.7rem;color:var(--muted);">点击更新状态</div>
                 </div>
               `;
             }).join('')}
@@ -694,7 +700,7 @@
                 ${items.map(it => {
                   const status = Summary.itemStatus(it, SPARTAN_HUB.expenseSplits);
                   return `
-                    <tr>
+                    <tr data-view-item="${it.id}" style="cursor:pointer;">
                       <td><code>${it.id}</code></td>
                       <td><strong>${it.title}</strong>${it.note ? `<br><span style="color:var(--muted);font-size:0.75rem;">${it.note}</span>` : ''}</td>
                       <td>${it.category}</td>
@@ -1015,13 +1021,14 @@
 
           <div class="ann-list">
             ${SPARTAN_HUB.announcements.map((a, idx) => `
-              <div class="ann-row">
+              <div class="ann-row" data-ann-idx="${idx}" style="cursor:pointer;">
                 <div class="ann-priority ${a.priority}">${priorityLabels[a.priority] || '中'}</div>
                 <div class="ann-body">
                   <div class="ann-title">${a.title}</div>
                   <div class="ann-time">${a.time}</div>
                 </div>
                 <div class="ann-actions">
+                  <button class="btn-mini" data-edit-ann="${idx}">编辑</button>
                   <button class="btn-mini btn-danger" data-del-ann="${idx}">删除</button>
                 </div>
               </div>
@@ -1052,16 +1059,216 @@
     });
   }
 
+  function bindAnnouncementClicks() {
+    document.querySelectorAll('.announce-clickable').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = Number(el.getAttribute('data-ann-idx'));
+        openAnnouncementDetail(idx);
+      });
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          const idx = Number(el.getAttribute('data-ann-idx'));
+          openAnnouncementDetail(idx);
+        }
+      });
+    });
+  }
+
+  function openAnnouncementDetail(idx) {
+    const a = SPARTAN_HUB.announcements[idx];
+    if (!a) return;
+    const priorityLabels = { high: '紧急', mid: '一般', low: '参考' };
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-mask';
+    overlay.id = 'annDetailMask';
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="公告详情">
+        <div class="modal-head">
+          <div>
+            <span class="tag ${a.priority}">${priorityLabels[a.priority] || '一般'}</span>
+            <h3 style="margin-top:8px;">${a.title}</h3>
+          </div>
+          <button class="modal-close" id="annDetailClose">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="ann-detail-meta">
+            <i class="fa-regular fa-calendar"></i> 发布于 <strong>${a.time}</strong>
+          </div>
+          <div class="ann-detail-body">${a.body ? a.body.replace(/\\n/g, '<br>') : '<span style="color:var(--muted)">（无正文）</span>'}</div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" id="annDetailOk">关闭</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    document.getElementById('annDetailClose').addEventListener('click', close);
+    document.getElementById('annDetailOk').addEventListener('click', close);
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+    });
+  }
+
+  function bindExpenseRowClicks() {
+    document.querySelectorAll('[data-view-item]').forEach(row => {
+      row.addEventListener('click', e => {
+        // 防止点击操作按钮时触发
+        if (e.target.closest('button') || e.target.closest('a')) return;
+        const id = row.getAttribute('data-view-item');
+        openItemDetail(id);
+      });
+      row.style.cursor = 'pointer';
+    });
+  }
+
+  function openItemDetail(itemId) {
+    const item = SPARTAN_HUB.expenseItems.find(i => i.id === itemId);
+    if (!item) return;
+    const splits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId === itemId);
+    const total = splits.reduce((s, x) => s + x.amountCents, 0);
+    const paid = splits.filter(s => s.paidStatus === 'paid').reduce((s, x) => s + x.amountCents, 0);
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-mask';
+    overlay.id = 'itemDetailMask';
+    overlay.innerHTML = `
+      <div class="modal modal-lg" role="dialog" aria-modal="true">
+        <div class="modal-head">
+          <div>
+            <span class="tag">${item.category}</span>
+            <h3 style="margin-top:8px;">${item.title}</h3>
+          </div>
+          <button class="modal-close" id="itemDetailClose">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="item-detail-stats">
+            <div class="stat"><div class="label">总金额</div><div class="value">${Summary.formatCents(item.amountCents)}</div></div>
+            <div class="stat"><div class="label">已分摊</div><div class="value">${Summary.formatCents(total)}</div></div>
+            <div class="stat"><div class="label">未分配</div><div class="value ${item.amountCents - total > 0 ? 'red' : 'green'}">${Summary.formatCents(item.amountCents - total)}</div></div>
+            <div class="stat"><div class="label">已支付</div><div class="value green">${Summary.formatCents(paid)} / ${Summary.formatCents(total - paid)}</div></div>
+          </div>
+          ${item.note ? `<div class="item-detail-note"><strong>备注：</strong>${item.note}</div>` : ''}
+          <h4 style="font-family:var(--display);letter-spacing:1.5px;color:var(--white);margin:24px 0 12px;">分摊明细</h4>
+          ${splits.length === 0 ? '<div class="note">该大项尚未分配任何成员。</div>' : `
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>成员</th><th class="num">应付</th><th class="num">已付</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody>
+                ${splits.map(s => {
+                  const u = Object.values(SPARTAN_HUB.users).find(u => u.id === s.memberId);
+                  const status = Summary.splitStatus(s);
+                  const isMine = state.user && s.memberId === SPARTAN_HUB.users[state.user]?.id;
+                  const isAdmin = state.user && SPARTAN_HUB.users[state.user]?.role === 'admin';
+                  return `
+                    <tr>
+                      <td><strong>${u ? u.name : s.memberId}</strong>${isMine ? ' <span class="tag" style="font-size:0.65rem;">我</span>' : ''}</td>
+                      <td class="num">${Summary.formatCents(s.amountCents)}</td>
+                      <td class="num green">${s.paidStatus === 'paid' ? Summary.formatCents(s.amountCents) : '—'}</td>
+                      <td><span class="tag ${status}">${Summary.statusLabel(status)}</span></td>
+                      <td>
+                        ${(isMine || isAdmin) && s.paidStatus !== 'paid' ?
+                          `<button class="btn-mini btn-primary" data-detail-mark-paid="${s.id}">标记已付</button>` :
+                          (s.paidStatus === 'paid' ? '<span style="color:var(--green);">✓ 已付</span>' : '<span style="color:var(--muted);">—</span>')}
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+          `}
+        </div>
+        <div class="modal-foot">
+          <button class="btn" id="itemDetailOk">关闭</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    document.getElementById('itemDetailClose').addEventListener('click', close);
+    document.getElementById('itemDetailOk').addEventListener('click', close);
+    // 弹窗内的"标记已付"按钮
+    overlay.querySelectorAll('[data-detail-mark-paid]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const sid = btn.getAttribute('data-detail-mark-paid');
+        await markSplitPaid(sid);
+        close();
+        render();
+      });
+    });
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+    });
+  }
+
+  // 统一的标记已付函数（前端 + 后端，带 fallback）
+  async function markSplitPaid(splitId) {
+    const split = SPARTAN_HUB.expenseSplits.find(s => s.id === splitId);
+    if (!split) return;
+    const me = SPARTAN_HUB.users[state.user];
+    if (!me) return;
+    if (me.role !== 'admin' && split.memberId !== me.id) {
+      alert('无权操作');
+      return;
+    }
+    try {
+      await apiCall('POST', `/splits/${splitId}/mark-paid`);
+    } catch (e) {
+      console.warn('[splits] mark-paid api failed, fallback to local:', e.message);
+    }
+    split.paidStatus = 'paid';
+    persistData();
+  }
+
+  // 物资状态更新（成员点击切换）
+  function bindGearClicks() {
+    document.querySelectorAll('[data-gear-name]').forEach(card => {
+      card.addEventListener('click', async () => {
+        const name = card.getAttribute('data-gear-name');
+        const me = SPARTAN_HUB.users[state.user];
+        if (!me) return;
+        const item = SPARTAN_HUB.publicGear.find(g => g.name === name);
+        if (!item) return;
+        const current = SPARTAN_HUB.gearStatusByUser[me.id]?.[name] ?? 0;
+        const next = (current + 1) % 3; // 0 -> 1 -> 2 -> 0
+        // 调后端
+        const items = SPARTAN_HUB.publicGear.map(g => {
+          const s = g.name === name ? next : (SPARTAN_HUB.gearStatusByUser[me.id]?.[g.name] ?? 0);
+          return { itemName: g.name, level: g.level, status: s };
+        });
+        try {
+          await apiCall('PUT', `/members/${me.id}/gear`, { items });
+        } catch (err) {
+          console.warn('[gear] put api failed, fallback:', err.message);
+        }
+        if (!SPARTAN_HUB.gearStatusByUser[me.id]) SPARTAN_HUB.gearStatusByUser[me.id] = {};
+        SPARTAN_HUB.gearStatusByUser[me.id][name] = next;
+        persistData();
+        render();
+      });
+    });
+  }
+
   function bindTasks() {
     document.querySelectorAll('input[data-task]').forEach(input => {
-      input.addEventListener('change', event => {
+      input.addEventListener('change', async event => {
         const [mid, idxStr] = event.target.getAttribute('data-task').split(':');
         const index = Number(idxStr);
-        if (SPARTAN_HUB.tasksByUser[mid]) {
-          SPARTAN_HUB.tasksByUser[mid][index].done = event.target.checked;
-          persistData();
-          render();
+        const task = SPARTAN_HUB.tasksByUser[mid]?.[index];
+        if (!task) return;
+        const done = event.target.checked;
+        try {
+          if (task.id) {
+            await apiCall('PATCH', `/tasks/${task.id}`, { done });
+          }
+        } catch (err) {
+          console.warn('[tasks] patch api failed, fallback:', err.message);
         }
+        task.done = done;
+        persistData();
       });
     });
   }
@@ -1102,17 +1309,10 @@
   // 成员标记已付
   function bindMarkPaid() {
     document.querySelectorAll('[data-mark-paid]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const id = btn.getAttribute('data-mark-paid');
-        const split = SPARTAN_HUB.expenseSplits.find(s => s.id === id);
-        if (!split) return;
-        const me = SPARTAN_HUB.users[state.user];
-        if (!me) return;
-        if (me.role === 'admin' || split.memberId === me.id) {
-          split.paidStatus = 'paid';
-          persistData();
-          render();
-        }
+        await markSplitPaid(id);
+        render();
       });
     });
   }
@@ -1126,17 +1326,25 @@
     if (exportBtn) exportBtn.addEventListener('click', exportCsv);
 
     document.querySelectorAll('[data-edit-item]').forEach(btn => {
-      btn.addEventListener('click', () => openItemModal(btn.getAttribute('data-edit-item')));
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        openItemModal(btn.getAttribute('data-edit-item'));
+      });
     });
     document.querySelectorAll('[data-del-item]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
         const id = btn.getAttribute('data-del-item');
-        if (confirm('确认删除该大项及其所有分摊？')) {
-          SPARTAN_HUB.expenseItems = SPARTAN_HUB.expenseItems.filter(i => i.id !== id);
-          SPARTAN_HUB.expenseSplits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId !== id);
-          persistData();
-          render();
+        if (!confirm('确认删除该大项及其所有分摊？')) return;
+        try {
+          await apiCall('DELETE', `/expense-items/${id}`);
+        } catch (err) {
+          console.warn('[expense] delete api failed, fallback:', err.message);
         }
+        SPARTAN_HUB.expenseItems = SPARTAN_HUB.expenseItems.filter(i => i.id !== id);
+        SPARTAN_HUB.expenseSplits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId !== id);
+        persistData();
+        render();
       });
     });
   }
@@ -1248,7 +1456,7 @@
     $('#modalClose').addEventListener('click', closeModal);
     $('#modalCancel').addEventListener('click', closeModal);
 
-    $('#modalSave').addEventListener('click', () => {
+    $('#modalSave').addEventListener('click', async () => {
       const title = $('#mTitle').value.trim();
       const category = $('#mCategory').value;
       const amount = Math.round(Number($('#mAmount').value) * 100);
@@ -1256,29 +1464,72 @@
       const note = $('#mNote').value.trim();
       if (!title || !amount) { alert('名称与金额必填'); return; }
 
-      let targetItemId;
-      if (item) {
-        Object.assign(item, { title, category, amountCents: amount, status, note });
-        targetItemId = item.id;
-        // 删除旧分摊，重新写
-        SPARTAN_HUB.expenseSplits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId !== targetItemId);
-      } else {
-        targetItemId = 'ei-' + Date.now();
-        SPARTAN_HUB.expenseItems.push({ id: targetItemId, title, category, amountCents: amount, status, note, createdBy: 'a1' });
-      }
-
-      // 写入新分摊
+      // 收集分摊明细
       const checked = Array.from(document.querySelectorAll('.member-check:checked'));
+      const newSplits = [];
       checked.forEach(cb => {
         const mid = cb.value;
         const amtInput = document.querySelector(`.split-amt[data-mid="${mid}"]`);
         const amt = Math.round(Number(amtInput.value) * 100);
         if (!amt) return;
+        newSplits.push({ memberId: mid, amountCents: amt });
+      });
+
+      let targetItemId;
+      try {
+        if (item) {
+          // 编辑：PATCH
+          const r = await apiCall('PATCH', `/expense-items/${item.id}`, {
+            title, category, amountCents: amount, status, note
+          });
+          targetItemId = r.item.id;
+        } else {
+          // 新增：POST
+          const r = await apiCall('POST', `/expense-items`, {
+            title, category, amountCents: amount, status, note
+          });
+          targetItemId = r.item.id;
+        }
+        // 同步分摊到后端
+        if (newSplits.length > 0) {
+          await apiCall('POST', `/expense-items/${targetItemId}/splits`, { splits: newSplits });
+        }
+      } catch (err) {
+        console.warn('[expense] save api failed, fallback to local:', err.message);
+        // 本地 fallback
+        if (item) {
+          Object.assign(item, { title, category, amountCents: amount, status, note });
+          targetItemId = item.id;
+          SPARTAN_HUB.expenseSplits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId !== targetItemId);
+        } else {
+          targetItemId = 'ei-local-' + Date.now();
+          SPARTAN_HUB.expenseItems.push({ id: targetItemId, title, category, amountCents: amount, status, note, createdBy: 'a1' });
+        }
+        newSplits.forEach(s => {
+          SPARTAN_HUB.expenseSplits.push({
+            id: 'sp-local-' + Date.now() + '-' + s.memberId,
+            itemId: targetItemId,
+            memberId: s.memberId,
+            amountCents: s.amountCents,
+            paidStatus: 'unpaid'
+          });
+        });
+      }
+
+      // 同步本地状态
+      if (item) {
+        Object.assign(item, { title, category, amountCents: amount, status, note });
+      } else if (!SPARTAN_HUB.expenseItems.find(i => i.id === targetItemId)) {
+        SPARTAN_HUB.expenseItems.push({ id: targetItemId, title, category, amountCents: amount, status, note, createdBy: 'a1' });
+      }
+      // 重置本地分摊
+      SPARTAN_HUB.expenseSplits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId !== targetItemId);
+      newSplits.forEach(s => {
         SPARTAN_HUB.expenseSplits.push({
-          id: 'sp-' + Date.now() + '-' + mid,
+          id: 'sp-' + targetItemId + '-' + s.memberId,
           itemId: targetItemId,
-          memberId: mid,
-          amountCents: amt,
+          memberId: s.memberId,
+          amountCents: s.amountCents,
           paidStatus: 'unpaid'
         });
       });
@@ -1315,70 +1566,109 @@
     const addBtn = $('#addAnnBtn');
     if (addBtn) addBtn.addEventListener('click', () => openAnnModal());
 
+    document.querySelectorAll('[data-edit-ann]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        openAnnModal(Number(btn.getAttribute('data-edit-ann')));
+      });
+    });
+
     document.querySelectorAll('[data-del-ann]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
         const idx = Number(btn.getAttribute('data-del-ann'));
-        if (confirm('确认删除该公告？')) {
-          SPARTAN_HUB.announcements.splice(idx, 1);
-          persistData();
-          render();
+        if (!confirm('确认删除该公告？')) return;
+        const ann = SPARTAN_HUB.announcements[idx];
+        try {
+          if (ann && ann.id) {
+            await apiCall('DELETE', `/announcements/${ann.id}`);
+          }
+        } catch (err) {
+          console.warn('[ann] delete api failed, fallback:', err.message);
         }
+        SPARTAN_HUB.announcements.splice(idx, 1);
+        persistData();
+        render();
+      });
+    });
+
+    // 行点击查看详情
+    document.querySelectorAll('.ann-row[data-ann-idx]').forEach(row => {
+      row.addEventListener('click', () => {
+        const idx = Number(row.getAttribute('data-ann-idx'));
+        openAnnouncementDetail(idx);
       });
     });
   }
 
-  function openAnnModal() {
+  function openAnnModal(idx) {
     const modal = $('#annModal');
     if (!modal) return;
+    const editing = typeof idx === 'number' && SPARTAN_HUB.announcements[idx];
+    const a = editing ? SPARTAN_HUB.announcements[idx] : null;
     modal.innerHTML = `
       <div class="modal-mask">
         <div class="modal">
           <div class="modal-head">
-            <h3>发布新公告</h3>
+            <h3>${editing ? '编辑公告' : '发布新公告'}</h3>
             <button class="modal-close" id="annModalClose">×</button>
           </div>
           <div class="modal-body">
             <div class="form-row">
               <label>标题</label>
-              <input id="annTitle" type="text" placeholder="如：8/13 19:00 番禺广场集合" required>
+              <input id="annTitle" type="text" placeholder="如：8/13 19:00 番禺广场集合" value="${a ? a.title : ''}" required>
             </div>
             <div class="form-row">
               <label>正文</label>
-              <input id="annBody" type="text" placeholder="公告正文内容">
+              <textarea id="annBody" rows="4" placeholder="公告正文内容（支持换行）">${a ? (a.body || '') : ''}</textarea>
             </div>
             <div class="form-row">
               <label>优先级</label>
               <select id="annPriority">
-                <option value="high">高（紧急）</option>
-                <option value="mid" selected>中（一般）</option>
-                <option value="low">低（参考）</option>
+                <option value="high" ${a && a.priority === 'high' ? 'selected' : ''}>高（紧急）</option>
+                <option value="mid" ${!a || a.priority === 'mid' ? 'selected' : ''}>中（一般）</option>
+                <option value="low" ${a && a.priority === 'low' ? 'selected' : ''}>低（参考）</option>
               </select>
             </div>
             <div class="form-row">
               <label>发布日期</label>
-              <input id="annTime" type="date" value="${new Date().toISOString().slice(0,10)}">
+              <input id="annTime" type="date" value="${a ? a.time : new Date().toISOString().slice(0,10)}">
             </div>
           </div>
           <div class="modal-foot">
             <button class="btn" id="annModalCancel">取消</button>
-            <button class="btn btn-primary" id="annModalSave">发布</button>
+            <button class="btn btn-primary" id="annModalSave">${editing ? '保存' : '发布'}</button>
           </div>
         </div>
       </div>
     `;
     $('#annModalClose').addEventListener('click', () => modal.innerHTML = '');
     $('#annModalCancel').addEventListener('click', () => modal.innerHTML = '');
-    $('#annModalSave').addEventListener('click', () => {
+    $('#annModalSave').addEventListener('click', async () => {
       const title = $('#annTitle').value.trim();
+      const body = $('#annBody').value.trim();
+      const priority = $('#annPriority').value;
+      const time = $('#annTime').value || new Date().toISOString().slice(0,10);
       if (!title) { alert('标题必填'); return; }
-      const newAnn = {
-        title,
-        body: $('#annBody').value.trim(),
-        priority: $('#annPriority').value,
-        time: $('#annTime').value || new Date().toISOString().slice(0,10)
-      };
-      // 新公告插入到数组开头（最新优先展示）
-      SPARTAN_HUB.announcements.unshift(newAnn);
+
+      if (editing) {
+        const ann = SPARTAN_HUB.announcements[idx];
+        try {
+          if (ann.id) {
+            await apiCall('PATCH', `/announcements/${ann.id}`, { title, body, priority, time });
+          }
+        } catch (err) {
+          console.warn('[ann] patch api failed, fallback:', err.message);
+        }
+        Object.assign(ann, { title, body, priority, time });
+      } else {
+        try {
+          await apiCall('POST', `/announcements`, { title, body, priority, scope: 'public', pinned: priority === 'high' });
+        } catch (err) {
+          console.warn('[ann] post api failed, fallback:', err.message);
+        }
+        SPARTAN_HUB.announcements.unshift({ title, body, priority, time, id: 'local-' + Date.now() });
+      }
       persistData();
       modal.innerHTML = '';
       render();
@@ -1403,11 +1693,14 @@
     $('#main').innerHTML = (views[view] || renderHome)();
     renderNav();
     bindLogin();
+    bindAnnouncementClicks();
     bindTasks();
     bindMarkPaid();
     bindAdminExpense();
     bindAdminAnnouncements();
     bindAdminMembers();
+    bindExpenseRowClicks();
+    bindGearClicks();
     if (state.view === 'home' && window.SpartanWeather) {
       window.SpartanWeather.loadAndRender();
     }
