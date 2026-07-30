@@ -384,10 +384,8 @@ WHERE archived_at IS NULL;
 | | 3 | 已取消 |
 | `expense_splits.paid_status` | 0 | 待付 |
 | | 1 | 已付（成员线下自结，管理员核销） |
-| `gear_status.status` | 0 | 未确认 |
-| | 1 | 已有 |
-| | 2 | 待购买 |
-| | 3 | 已装包 |
+| `gear_status.status` | 0 | 未确认（前端点击切换为 1） |
+| | 1 | 已确认 |
 | `gear_status.level` | mandatory / recommended / optional |
 | `tasks.done` | 0 / 1 |
 | `announcements.priority` | high / mid / low |

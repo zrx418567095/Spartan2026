@@ -273,10 +273,19 @@ CREATE INDEX idx_payment_member  ON payments(member_id, paid_at);
 
 ## 8. 后续要新增账号怎么办？
 
-- admin 在浏览器打开 `/admin/members` 页面，点击"新增成员"
-- 表单字段：`display`（中文名）必填，`username` 自动按拼音候选给出，admin 可手动覆盖
-- 提交后服务端：插入 `members` 行（`role='member'`、默认 `pin_locked=0`、`archived_at=NULL`），写 `audit_log`
-- **不允许前端自由注册**：`/api/v1/members` POST 是 admin-only
+- admin 登录后 → 进入"管理后台" → 点击"成员管理"卡片 → 打开 `admin-members` 视图
+- 点击"+ 新增成员"按钮，填写：
+  - 登录名（拼音全拼小写，**新增后不可修改**）
+  - 姓名（中文）
+  - 组别（可选）
+  - 角色（成员/管理员）
+- 提交后：
+  - 前端调 `POST /api/v1/members`（admin-only）→ 服务端插入 `members` 行（`role='member'`、`archived_at=NULL`），写 `audit_log`
+  - 前端同步更新 `SPARTAN_HUB.users` 与 `localStorage`（API 失败时 fallback）
+  - 自动初始化 `tasksByUser[id] = []` 与 `gearStatusByUser[id] = {}`
+- 编辑：点击行内"编辑"按钮 → `PATCH /api/v1/members/:id`
+- 删除：点击行内"删除"按钮（带确认）→ `DELETE /api/v1/members/:id`，**软删除**（保留分摊历史）
+- **不允许前端自由注册**：所有 `members` 写接口都是 admin-only
 
 ---
 

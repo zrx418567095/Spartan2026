@@ -204,3 +204,88 @@ Syntax OK
 ## 五、结论
 
 **8 个测试用例全部通过**，核心 Bug（新增成员无法被分摊费用）已修复。修复方案未影响原有功能，建议用户立即刷新页面验证。
+
+---
+
+## 六、v0.2 增量测试用例
+
+> 适用代码版本：`v0.2.x`
+> 第一次打包部署后（提交 `29223b8` 之后）的所有增量改动验证
+
+### 6.1 公告/费用详情可点击（提交 `8ccbcf0`）
+
+| 用例 | 验证 |
+|------|------|
+| TC-09 首页公告列表点击 | ✅ 弹窗显示完整正文 + 优先级 + 发布时间 |
+| TC-10 费用大项表格行点击 | ✅ 弹窗显示汇总 + 分摊明细表 |
+| TC-11 详情弹窗中"标记已付" | ✅ 调用 `POST /api/v1/splits/:id/mark-paid` |
+| TC-12 弹窗 Esc 关闭 | ✅ 按 Esc 关闭弹窗 |
+
+### 6.2 全部 CRUD 调用后端 API（提交 `0087785`、`8ccbcf0`）
+
+| 操作 | API 调用 | localStorage fallback |
+|------|---------|---------------------|
+| 公告新增 | `POST /api/v1/announcements` | ✓ |
+| 公告编辑 | `PATCH /api/v1/announcements/:id` | ✓ |
+| 公告删除 | `DELETE /api/v1/announcements/:id` | ✓ |
+| 费用大项新增 | `POST /api/v1/expense-items` + `/:id/splits` | ✓ |
+| 费用大项编辑 | `PATCH /api/v1/expense-items/:id` + `/:id/splits` | ✓ |
+| 费用大项删除 | `DELETE /api/v1/expense-items/:id` | ✓ |
+| 标记已付 | `POST /api/v1/splits/:id/mark-paid` | ✓ |
+| 任务勾选 | `PATCH /api/v1/tasks/:id` | ✓ |
+| 物资切换 | `PUT /api/v1/members/:id/gear` | ✓ |
+| 成员增删改 | `POST/PATCH/DELETE /api/v1/members[/:id]` | ✓ |
+
+### 6.3 个人物资二态切换（提交 `ade8ff6`）
+
+| 用例 | 验证 |
+|------|------|
+| TC-13 点击未确认物资卡片 | ✅ 状态切换为已确认 + 绿色边框 + 勾选图标 |
+| TC-14 再次点击已确认物资卡片 | ✅ 状态切换回未确认 |
+| TC-15 跨设备查看同一成员的物资状态 | ✅ 后端 `gear_status` 表持久化 |
+
+### 6.4 移动端 bug 修复（提交 `ad82875` → `46c7cb3`）
+
+| Bug | 修复提交 | 验证 |
+|-----|---------|------|
+| 手机菜单黑屏 | `ad82875` | ✅ CSS 修复 + 关闭按钮 |
+| 菜单 stacking context 残缺 | `7709c6f` | ✅ nav-mobile 移到 body 直接子元素 |
+| 汉堡按钮"两个叉" | `10f7daa` | ✅ 单图标 + class toggle |
+| 菜单打开后 body 不能滚 | `0587c16` | ✅ 改用 class 控制 overflow |
+| 跳转页面后不能滚 | `cc620d1` | ✅ closeMobileNav 清理 no-scroll |
+| 滚动后 nav 不能点击 | `46c7cb3` | ✅ mobile 关闭 backdrop-filter |
+
+### 6.5 导航调整（提交 `7ff2ecf`）
+
+| 用例 | 验证 |
+|------|------|
+| TC-16 nav 不再含"管理后台"项 | ✅ 已移除 |
+| TC-17 管理员 dashboard 含"管理后台"入口 | ✅ 紫色卡片，含团队总额/已结清人数 |
+
+### 6.6 能量补给模块（提交 `47c7e61`）
+
+| 用例 | 验证 |
+|------|------|
+| TC-18 物资管理页底部显示能量补给 | ✅ 3 张卡片（迈胜黑胶 / SIS / 电解质） |
+| TC-19 卡片含实物图 + 数量徽章 + 数据块 | ✅ |
+
+### 6.7 装备级别调整（提交 `be2a865`）
+
+| 装备 | 调整后级别 |
+|------|-----------|
+| 防水冲锋衣 | mandatory（强制） |
+| 手机防水袋 | mandatory（强制） |
+| 盐丸 × 10 | optional（可选） |
+| 对讲机 | recommended（建议，新增） |
+
+合计：强制 8 / 建议 8 / 可选 6 / **总计 22 项**
+
+---
+
+## 七、v0.2 总结
+
+- **12 次提交** / 5 个功能特性 + 7 个移动端 bug 修复
+- **API 完整性**：所有 CRUD 都有后端实现 + 前端 fallback
+- **移动端**：汉堡菜单、滚动、点击、stacking context 全部修复
+- **数据持久化**：双写（前端 → 后端 → SQLite + localStorage fallback）
+- **代码质量**：所有 commit 通过 `node -c` 语法校验

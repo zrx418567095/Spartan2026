@@ -150,7 +150,14 @@ spartan-hub/
 | POST | `/api/v1/auth/logout` | 撤销 session | 是 | |
 | GET | `/api/v1/auth/me` | 当前登录成员 | 是 | |
 | GET | `/api/v1/members` | 成员列表（仅公开字段） | 是 | 仅返回 `id / display / group / role` |
+| POST | `/api/v1/members` | 新增成员 | **仅 admin** | 校验 `id` 与 `username` 唯一 |
+| PATCH | `/api/v1/members/:id` | 编辑成员（姓名/组别/角色/登录名） | **仅 admin** | 登录名冲突时 409 |
+| DELETE | `/api/v1/members/:id` | 软删除成员（保留分摊历史） | **仅 admin** | `a1` 不可删除 |
 | GET | `/api/v1/members/:id/splits` | 个人分摊列表 + 汇总 | **本人或 admin** | |
+| GET | `/api/v1/announcements` | 公告列表（公共/定向） | 部分 | 未登录仅看 public；登录看定向 |
+| POST | `/api/v1/announcements` | 新增公告 | **仅 admin** | 支持 `scope / targetMemberId / pinned` |
+| PATCH | `/api/v1/announcements/:id` | 编辑公告 | **仅 admin** | |
+| DELETE | `/api/v1/announcements/:id` | 软删除公告 | **仅 admin** | |
 | GET | `/api/v1/expense-items` | 大项列表（含未分配余额） | **仅 admin** | |
 | POST | `/api/v1/expense-items` | 新增大项 | **仅 admin** | |
 | PATCH | `/api/v1/expense-items/:id` | 修改大项（金额/状态/备注） | **仅 admin** | |
@@ -160,9 +167,11 @@ spartan-hub/
 | DELETE | `/api/v1/splits/:id` | 移除分摊 | **仅 admin** | |
 | POST | `/api/v1/splits/:id/mark-paid` | 成员确认已付 + 管理员核销 | **本人或 admin** | |
 | GET | `/api/v1/members/:id/gear` | 个人装备状态 | **本人或 admin** | |
-| PUT | `/api/v1/members/:id/gear` | 整表覆盖个人装备状态 | **本人或 admin** | |
+| PUT | `/api/v1/members/:id/gear` | 整表覆盖个人装备状态 | **本人或 admin** | 二态 `0 / 1` |
 | GET | `/api/v1/members/:id/tasks` | 个人任务 | **本人或 admin** | |
+| POST | `/api/v1/members/:id/tasks` | 新增个人任务 | **本人或 admin** | |
 | PATCH | `/api/v1/tasks/:id` | 完成 / 取消 | **本人或 admin** | |
+| DELETE | `/api/v1/tasks/:id` | 删除任务 | **本人或 admin** | |
 | GET | `/api/v1/expenses/summary` | 团队费用总览（总支出/各成员待付/已付） | **仅 admin** | 支持 CSV 导出 |
 | GET | `/api/v1/gear/progress` | 团队装备就位率 | **仅 admin** | |
 | GET | `/api/v1/admin/audit` | 审计日志 | **仅 admin** | |
