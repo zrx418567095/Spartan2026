@@ -180,6 +180,30 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   text-transform: uppercase; opacity: 0.9;
 }
 .hero-course .sep { color: var(--purple-soft); padding: 0 8px; }
+.hero-cta { margin-top: 32px; display: flex; justify-content: center; }
+.btn-cta {
+  display: inline-flex; align-items: center; gap: 12px;
+  padding: 16px 36px; font-family: var(--display);
+  font-size: 1.15rem; letter-spacing: 2px;
+  text-transform: uppercase;
+  background: var(--accent, #f30d2d); color: #fff;
+  border: none; cursor: pointer;
+  box-shadow: 0 8px 24px rgba(243, 13, 45, 0.35);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.btn-cta:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(243, 13, 45, 0.5); }
+.btn-cta:active { transform: translateY(0); }
+.hero-greet {
+  display: inline-block; padding: 12px 24px;
+  font-family: var(--display); font-size: 1.1rem;
+  letter-spacing: 2px; color: var(--purple-glow);
+  border: 1px solid var(--purple-soft);
+}
+
+/* 移动端汉堡图标切换 */
+.nav-hamburger .fa-xmark { display: none; }
+.nav-hamburger[aria-expanded="true"] .fa-bars { display: none; }
+.nav-hamburger[aria-expanded="true"] .fa-xmark { display: inline; }
 
 /* ===== 卡片 / 网格 ===== */
 .grid { display: grid; gap: 1px; }

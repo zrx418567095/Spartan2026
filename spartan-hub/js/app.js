@@ -17,7 +17,8 @@
       expenseSplits: SPARTAN_HUB.expenseSplits,
       tasksByUser: SPARTAN_HUB.tasksByUser,
       gearStatusByUser: SPARTAN_HUB.gearStatusByUser,
-      announcements: SPARTAN_HUB.announcements
+      announcements: SPARTAN_HUB.announcements,
+      users: SPARTAN_HUB.users
     }));
   }
   function restoreData() {
@@ -25,8 +26,34 @@
     if (!saved) return;
     try {
       const obj = JSON.parse(saved);
-      Object.assign(SPARTAN_HUB, obj);
+      if (obj.users) SPARTAN_HUB.users = obj.users;
+      if (obj.expenseItems) SPARTAN_HUB.expenseItems = obj.expenseItems;
+      if (obj.expenseSplits) SPARTAN_HUB.expenseSplits = obj.expenseSplits;
+      if (obj.tasksByUser) SPARTAN_HUB.tasksByUser = obj.tasksByUser;
+      if (obj.gearStatusByUser) SPARTAN_HUB.gearStatusByUser = obj.gearStatusByUser;
+      if (obj.announcements) SPARTAN_HUB.announcements = obj.announcements;
     } catch (e) { /* ignore */ }
+  }
+
+  // ====== 后端 API 调用（带 fallback） ======
+  const API_BASE = '/api/v1';
+  function apiAvailable() {
+    // 同源部署时尝试一次 /healthz；不通则走 localStorage 模式
+    return fetch('/healthz', { method: 'GET' }).then(r => r.ok).catch(() => false);
+  }
+  async function apiCall(method, url, body) {
+    const opts = {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(API_BASE + url, opts);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.message || err.error || `HTTP ${res.status}`);
+    }
+    return res.json();
   }
 
   const money = v => `¥${v.toLocaleString('zh-CN')}`;
@@ -98,17 +125,41 @@
       const viewTarget = event.target.closest('[data-view]');
       if (viewTarget) {
         event.preventDefault();
-        setView(viewTarget.getAttribute('data-view'));
-        $('#navMobile').classList.remove('open');
+        const view = viewTarget.getAttribute('data-view');
+        // "登录"导航：直接滚到底部登录区（不切换视图）
+        if (view === 'login') {
+          closeMobileNav();
+          const target = document.getElementById('login');
+          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const input = document.getElementById('loginInput');
+          if (input) setTimeout(() => input.focus(), 350);
+          return;
+        }
+        setView(view);
+        closeMobileNav();
         return;
       }
       const logoutTarget = event.target.closest('[data-action="logout"]');
       if (logoutTarget) {
         event.preventDefault();
         logout();
-        $('#navMobile').classList.remove('open');
+        closeMobileNav();
+      }
+      // Hero 中的"立即登录"CTA
+      const loginCta = event.target.closest('[data-action="scroll-login"]');
+      if (loginCta) {
+        event.preventDefault();
+        const target = document.getElementById('login');
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const input = document.getElementById('loginInput');
+        if (input) setTimeout(() => input.focus(), 350);
       }
     });
+  }
+
+  function closeMobileNav() {
+    const m = document.getElementById('navMobile');
+    if (m) m.classList.remove('open');
   }
 
   // ============== 页面渲染 ==============
@@ -135,6 +186,18 @@
           <span class="sep">·</span>
           ${c.aidStations} Aid Stations
         </div>
+        ${!state.user ? `
+        <div class="hero-cta">
+          <button class="btn-cta" data-action="scroll-login">
+            <i class="fa-solid fa-right-to-bracket"></i>
+            登录查看个人费用与物资
+          </button>
+        </div>
+        ` : `
+        <div class="hero-cta">
+          <span class="hero-greet">已登录：${SPARTAN_HUB.users[state.user].name}${SPARTAN_HUB.users[state.user].role === 'admin' ? ' · 管理员' : ''}</span>
+        </div>
+        `}
       </section>
 
       ${window.SpartanWeather ? window.SpartanWeather.render() : ''}
@@ -775,7 +838,7 @@
 
     $('#memberModalClose').addEventListener('click', closeMemberModal);
     $('#memberModalCancel').addEventListener('click', closeMemberModal);
-    $('#memberModalSave').addEventListener('click', () => {
+    $('#memberModalSave').addEventListener('click', async () => {
       const uname = $('#mUsername').value.trim().toLowerCase();
       const name = $('#mName').value.trim();
       const group = $('#mGroup').value.trim();
@@ -784,23 +847,35 @@
       if (!uname || !name) { alert('登录名和姓名必填'); return; }
       if (!existing && SPARTAN_HUB.users[uname]) { alert('该登录名已存在'); return; }
 
-      const id = existing ? existing.id : 'm' + (Object.keys(SPARTAN_HUB.users).length + 1);
+      const id = existing ? existing.id : 'm' + (Date.now().toString().slice(-6));
 
-      SPARTAN_HUB.users[uname] = { id, name, role, group: group || '未分组' };
+      try {
+        if (existing) {
+          // 编辑：调用 PATCH
+          await apiCall('PATCH', `/members/${existing.id}`, {
+            username: uname, display: name, group: group || '未分组', role
+          });
+        } else {
+          // 新增：调用 POST
+          await apiCall('POST', `/members`, {
+            id, username: uname, display: name, group: group || '未分组', role
+          });
+        }
+      } catch (e) {
+        // 后端失败时退回本地存储（保证可用性）
+        console.warn('[members] api failed, fallback to local:', e.message);
+      }
+
+      // 本地同步（无论后端成功与否都更新前端对象）
+      SPARTAN_HUB.users[uname] = { id, name, role, group: group || '未分组', username: uname, display: name };
       if (existing && uname !== username) {
-        // 登录名改了，更新 key
         const oldData = SPARTAN_HUB.users[username];
         delete SPARTAN_HUB.users[username];
-        SPARTAN_HUB.users[uname] = { ...oldData, name, group: group || '未分组', role };
+        SPARTAN_HUB.users[uname] = { ...oldData, id, name, group: group || '未分组', role, username: uname, display: name };
       }
 
-      // 初始化任务和物资数据
-      if (!SPARTAN_HUB.tasksByUser[id]) {
-        SPARTAN_HUB.tasksByUser[id] = [];
-      }
-      if (!SPARTAN_HUB.gearStatusByUser[id]) {
-        SPARTAN_HUB.gearStatusByUser[id] = {};
-      }
+      if (!SPARTAN_HUB.tasksByUser[id]) SPARTAN_HUB.tasksByUser[id] = [];
+      if (!SPARTAN_HUB.gearStatusByUser[id]) SPARTAN_HUB.gearStatusByUser[id] = {};
 
       persistData();
       closeMemberModal();
@@ -822,18 +897,24 @@
     });
 
     document.querySelectorAll('[data-del-member]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const uname = btn.getAttribute('data-del-member');
-        if (confirm(`确认删除成员"${SPARTAN_HUB.users[uname]?.name}"？\n\n注意：\n· 费用分摊记录不会被自动删除\n· 成员的任务和物资数据将被移除`)) {
-          const u = SPARTAN_HUB.users[uname];
-          if (u) {
-            delete SPARTAN_HUB.users[uname];
-            if (SPARTAN_HUB.tasksByUser[u.id]) delete SPARTAN_HUB.tasksByUser[u.id];
-            if (SPARTAN_HUB.gearStatusByUser[u.id]) delete SPARTAN_HUB.gearStatusByUser[u.id];
-          }
-          persistData();
-          render();
+        const u = SPARTAN_HUB.users[uname];
+        if (!u) return;
+        if (!confirm(`确认删除成员"${u.name}"？\n\n注意：\n· 费用分摊记录不会被自动删除\n· 成员的任务和物资数据将被移除`)) return;
+
+        try {
+          await apiCall('DELETE', `/members/${u.id}`);
+        } catch (e) {
+          console.warn('[members] delete api failed, fallback to local:', e.message);
         }
+
+        delete SPARTAN_HUB.users[uname];
+        if (SPARTAN_HUB.tasksByUser[u.id]) delete SPARTAN_HUB.tasksByUser[u.id];
+        if (SPARTAN_HUB.gearStatusByUser[u.id]) delete SPARTAN_HUB.gearStatusByUser[u.id];
+
+        persistData();
+        render();
       });
     });
   }
@@ -986,10 +1067,36 @@
   }
 
   function bindNavToggle() {
-    const btn = $('#navHamburger');
-    const mobile = $('#navMobile');
-    if (!btn || !mobile) return;
-    btn.addEventListener('click', () => mobile.classList.toggle('open'));
+    const btn = document.getElementById('navHamburger');
+    const mobile = document.getElementById('navMobile');
+    if (!btn || !mobile) {
+      console.warn('[nav] hamburger 或 mobile 元素缺失');
+      return;
+    }
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      mobile.classList.toggle('open');
+      const expanded = mobile.classList.contains('open');
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      // 切换图标
+      const icon = btn.querySelector('i');
+      if (icon) {
+        icon.classList.toggle('fa-bars', !expanded);
+        icon.classList.toggle('fa-xmark', expanded);
+      }
+    });
+    // 点击导航外部区域关闭
+    document.addEventListener('click', e => {
+      if (!mobile.classList.contains('open')) return;
+      if (e.target.closest('#navMobile') || e.target.closest('#navHamburger')) return;
+      mobile.classList.remove('open');
+      btn.setAttribute('aria-expanded', 'false');
+      const icon = btn.querySelector('i');
+      if (icon) {
+        icon.classList.add('fa-bars');
+        icon.classList.remove('fa-xmark');
+      }
+    });
   }
 
   // 成员标记已付
