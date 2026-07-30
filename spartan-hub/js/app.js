@@ -1315,8 +1315,8 @@
       btn.classList.toggle('is-open', open);
       btn.setAttribute('aria-expanded', open ? 'true' : 'false');
       mobile.setAttribute('aria-hidden', open ? 'false' : 'true');
-      // 打开时禁止 body 滚动
-      document.body.style.overflow = open ? 'hidden' : '';
+      // 打开时禁止 body 滚动（关闭时清除，确保可滚动）
+      document.body.classList.toggle('no-scroll', open);
     };
     btn.addEventListener('click', e => {
       e.stopPropagation();
