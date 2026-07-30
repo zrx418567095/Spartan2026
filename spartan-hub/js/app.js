@@ -551,6 +551,9 @@
       .map(([_, u]) => ({ memberId: u.id, name: u.name, ...Summary.summarizeMemberSplits(SPARTAN_HUB.expenseSplits, u.id) }));
     const paidMembers = memberSummaries.filter(m => m.pendingCents === 0).length;
 
+    // 物资已确认数（用于底部提示）
+    const confirmedCount = SPARTAN_HUB.publicGear.filter(g => gearMap[g.name] === 1).length;
+
     return `
       <section class="section">
         <div class="container">
@@ -608,17 +611,23 @@
           <div class="grid grid-3">
             ${SPARTAN_HUB.publicGear.map(item => {
               const status = gearMap[item.name] != null ? gearMap[item.name] : 0;
+              const confirmed = status === 1;
               return `
-                <div class="card gear-card" data-gear-name="${item.name}" data-gear-status="${status}" style="cursor:pointer;">
-                  <span class="tag ${item.level}">${item.category}</span>
+                <div class="card gear-card ${confirmed ? 'gear-confirmed' : ''}" data-gear-name="${item.name}" data-gear-status="${status}" role="button" tabindex="0" aria-pressed="${confirmed}">
+                  <div class="gear-card-head">
+                    <span class="tag ${item.level}">${item.category}</span>
+                    <i class="gear-icon fa-solid ${confirmed ? 'fa-circle-check' : 'fa-circle'}"></i>
+                  </div>
                   <h4>${item.name}</h4>
                   <p>${item.level === 'mandatory' ? '官方强制装备' : item.level === 'recommended' ? '强烈建议' : '个人自选'}</p>
-                  <span class="gear-status s-${status}" style="margin-top:10px;">${Summary.gearStatusLabel(status)}</span>
-                  <div style="margin-top:8px;font-size:0.7rem;color:var(--muted);">点击更新状态</div>
+                  <div class="gear-status ${confirmed ? 's-1' : 's-0'}">${confirmed ? '已确认' : '未确认'}</div>
                 </div>
               `;
             }).join('')}
           </div>
+          <p class="sec-desc" style="margin-top:16px;text-align:center;">
+            <i class="fa-solid fa-circle-check" style="color:var(--green);"></i> ${confirmedCount} / ${SPARTAN_HUB.publicGear.length} 已确认 · 点击卡片切换状态
+          </p>
 
           <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:36px 0 12px;color:var(--white);">个人任务 (${tasksDone}/${tasks.length})</h3>
           ${upcomingTask ? `<div class="note">下一个待办：<strong style="color:var(--white);">${upcomingTask.title}</strong></div>` : '<div class="note">当前没有未完成的任务。</div>'}
@@ -1236,17 +1245,17 @@
     persistData();
   }
 
-  // 物资状态更新（成员点击切换）
+  // 物资状态更新（成员点击二态切换：未确认 ↔ 已确认）
   function bindGearClicks() {
     document.querySelectorAll('[data-gear-name]').forEach(card => {
-      card.addEventListener('click', async () => {
+      const handler = async () => {
         const name = card.getAttribute('data-gear-name');
         const me = SPARTAN_HUB.users[state.user];
         if (!me) return;
         const item = SPARTAN_HUB.publicGear.find(g => g.name === name);
         if (!item) return;
         const current = SPARTAN_HUB.gearStatusByUser[me.id]?.[name] ?? 0;
-        const next = (current + 1) % 3; // 0 -> 1 -> 2 -> 0
+        const next = current === 1 ? 0 : 1; // 二态切换：0 ↔ 1
         // 调后端
         const items = SPARTAN_HUB.publicGear.map(g => {
           const s = g.name === name ? next : (SPARTAN_HUB.gearStatusByUser[me.id]?.[g.name] ?? 0);
@@ -1261,6 +1270,13 @@
         SPARTAN_HUB.gearStatusByUser[me.id][name] = next;
         persistData();
         render();
+      };
+      card.addEventListener('click', handler);
+      card.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handler();
+        }
       });
     });
   }

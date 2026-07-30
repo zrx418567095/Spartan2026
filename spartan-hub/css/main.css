@@ -369,6 +369,44 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .gear-status.s-2 { border-color: var(--red); color: #ff7a8a; }
 .gear-status.s-3 { border-color: var(--purple-glow); color: var(--purple-glow); }
 
+/* 物资卡片（成员点击切换确认状态） */
+.gear-card {
+  position: relative; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.gear-card:hover { border-color: var(--purple-soft); transform: translateY(-2px); }
+.gear-card:focus { outline: 2px solid var(--purple-soft); outline-offset: 2px; }
+.gear-card.gear-confirmed {
+  background: rgba(116, 210, 123, 0.06);
+  border-color: var(--green);
+}
+.gear-card-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.gear-card .gear-icon {
+  font-size: 1.6rem; color: var(--muted);
+  transition: color 0.15s, transform 0.15s;
+}
+.gear-card:hover .gear-icon { color: var(--purple-soft); transform: scale(1.1); }
+.gear-card.gear-confirmed .gear-icon {
+  color: var(--green); animation: gear-pop 0.3s ease-out;
+}
+@keyframes gear-pop {
+  0%   { transform: scale(0.6); }
+  60%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+.gear-card .gear-status {
+  margin-top: 12px; padding: 4px 12px; font-size: 0.75rem;
+  font-family: var(--display); letter-spacing: 1.5px;
+}
+.gear-card.gear-confirmed .gear-status {
+  background: rgba(116, 210, 123, 0.15);
+  border-color: var(--green);
+  color: var(--green);
+}
+
 .task-list { list-style: none; }
 .task-list li {
   display: flex; align-items: center; gap: 12px;
