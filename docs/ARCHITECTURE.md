@@ -150,15 +150,20 @@ spartan-hub/
 | POST | `/api/v1/auth/logout` | 撤销 session | 是 | |
 | GET | `/api/v1/auth/me` | 当前登录成员 | 是 | |
 | GET | `/api/v1/members` | 成员列表（仅公开字段） | 是 | 仅返回 `id / display / group / role` |
-| GET | `/api/v1/members/:id/expenses` | 个人费用 | **本人或 admin** | |
-| POST | `/api/v1/members/:id/expenses` | 新增费用 | **仅 admin** | |
-| PATCH | `/api/v1/expenses/:id` | 全字段更新（含金额 / 状态） | **仅 admin** | |
-| POST | `/api/v1/expenses/:id/payments` | 追加已付款（成员自己上报） | **本人或 admin** | 用于"我已转账 ¥300" |
+| GET | `/api/v1/members/:id/splits` | 个人分摊列表 + 汇总 | **本人或 admin** | |
+| GET | `/api/v1/expense-items` | 大项列表（含未分配余额） | **仅 admin** | |
+| POST | `/api/v1/expense-items` | 新增大项 | **仅 admin** | |
+| PATCH | `/api/v1/expense-items/:id` | 修改大项（金额/状态/备注） | **仅 admin** | |
+| DELETE | `/api/v1/expense-items/:id` | 软删除大项 | **仅 admin** | |
+| GET | `/api/v1/expense-items/:id/splits` | 大项下全部分摊 | **仅 admin** | |
+| POST | `/api/v1/expense-items/:id/splits` | 新增/批量分摊 | **仅 admin** | 支持均摊一键计算 |
+| DELETE | `/api/v1/splits/:id` | 移除分摊 | **仅 admin** | |
+| POST | `/api/v1/splits/:id/mark-paid` | 成员确认已付 + 管理员核销 | **本人或 admin** | |
 | GET | `/api/v1/members/:id/gear` | 个人装备状态 | **本人或 admin** | |
 | PUT | `/api/v1/members/:id/gear` | 整表覆盖个人装备状态 | **本人或 admin** | |
 | GET | `/api/v1/members/:id/tasks` | 个人任务 | **本人或 admin** | |
 | PATCH | `/api/v1/tasks/:id` | 完成 / 取消 | **本人或 admin** | |
-| GET | `/api/v1/expenses/summary` | 团队费用总览（金额、待付） | **仅 admin** | |
+| GET | `/api/v1/expenses/summary` | 团队费用总览（总支出/各成员待付/已付） | **仅 admin** | 支持 CSV 导出 |
 | GET | `/api/v1/gear/progress` | 团队装备就位率 | **仅 admin** | |
 | GET | `/api/v1/admin/audit` | 审计日志 | **仅 admin** | |
 
@@ -170,8 +175,8 @@ spartan-hub/
 
 - `members` — 业务 ID + `username`（全拼）+ `display`（中文名）+ `role`
 - `sessions` — JWT 撤销表
-- `expenses` — 金额 `amount_cents` 整数
-- `payments` — 成员追加的已付记录（新增，见 `db-schema.md` v0.2 说明）
+- `expense_items` — 大项（总金额、分摊主体），管理员录入
+- `expense_splits` — 分摊（指定成员 + 金额），成员只读和确认已付
 - `gear_status` — `(member_id, item_name)` 复合主键
 - `tasks` — 个人任务
 - `announcements` — 公共与定向公告

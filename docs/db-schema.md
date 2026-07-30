@@ -24,14 +24,16 @@
 ## 1. ER 关系
 
 ```
-members 1───* sessions      1 个成员可有多次登录态
-members 1───* expenses     个人费用 1:N
-members 1───* gear_status  个人装备状态 1:N
-members 1───* tasks        个人任务 1:N
-members 1───* expenses  关联付款人（payer_id）
-announcements       1───* announcement_targets 公告 × 目标成员
-audit_log           记录所有写操作
+members 1───* sessions         1 个成员可有多次登录态
+members 1───* expense_splits   成员 1:N 分摊记录
+expense_items 1───* expense_splits  大项 1:N 分摊
+members 1───* gear_status      个人装备状态 1:N
+members 1───* tasks            个人任务 1:N
+announcements                    1───* announcement_targets 公告 × 目标成员
+audit_log                        记录所有写操作
 ```
+
+> **费用数据模型**：管理员在大项（`expense_items`）中录入总费用，再为指定成员挂分摊（`expense_splits`）。成员不直接录入费用，只能确认自己的分摊已支付。
 
 ---
 
@@ -94,33 +96,54 @@ CREATE INDEX idx_sessions_member   ON sessions(member_id);
 CREATE INDEX idx_sessions_expires  ON sessions(expires_at);
 
 -- ============================================================
--- expenses：个人费用（含团队公共费用按人头分摊后写入）
--- amount_cents = 总金额；paid_cents = 已经实付（多人可累计，但累计后 sum 可能超 amount）
--- status: 0=未生成 / 1=待支付 / 2=部分支付 / 3=已结清 / 4=已取消
+-- expense_items：大项（由管理员录入，如机票、酒店、报名费等）
+-- status: 1=待支付 / 2=已付清 / 3=已取消
 -- ============================================================
-CREATE TABLE expenses (
+CREATE TABLE expense_items (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  member_id     TEXT NOT NULL,                    -- 应付方
-  payer_id      TEXT,                             -- 实际垫付方（可空，NULL=未垫付）
-  item          TEXT NOT NULL,                    -- '云顶大酒店 2 晚'
-  category      TEXT,                              -- '住宿' / '交通' / '餐饮' / '赛事' / '其他'
-  amount_cents  INTEGER NOT NULL CHECK (amount_cents >= 0),
-  paid_cents    INTEGER NOT NULL DEFAULT 0 CHECK (paid_cents >= 0),
+  title         TEXT NOT NULL,                    -- '上海–香港机票'
+  category      TEXT NOT NULL
+                CHECK (category IN ('交通', '住宿', '餐饮', '赛事', '装备', '其他')),
+  amount_cents  INTEGER NOT NULL CHECK (amount_cents >= 0),  -- 大项总金额
   status        INTEGER NOT NULL DEFAULT 1
-                CHECK (status IN (0, 1, 2, 3, 4)),
-  due_date      TEXT,                              -- 'YYYY-MM-DD'
+                CHECK (status IN (1, 2, 3)),
+  paid_at       INTEGER,                          -- 管理员确认已付时间
   note          TEXT,
-  created_by    TEXT,                              -- 操作人（管理员或成员本人）
+  created_by    TEXT NOT NULL,                    -- admin id
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL,
-  archived_at   INTEGER,
-  CHECK (paid_cents <= amount_cents)
+  archived_at   INTEGER
 );
 
-CREATE INDEX idx_expenses_member   ON expenses(member_id);
-CREATE INDEX idx_expenses_payer    ON expenses(payer_id);
-CREATE INDEX idx_expenses_status   ON expenses(status) WHERE archived_at IS NULL;
-CREATE INDEX idx_expenses_due      ON expenses(due_date) WHERE archived_at IS NULL;
+CREATE INDEX idx_expense_items_status    ON expense_items(status) WHERE archived_at IS NULL;
+CREATE INDEX idx_expense_items_category  ON expense_items(category) WHERE archived_at IS NULL;
+
+-- ============================================================
+-- expense_splits：分摊（从属于大项，指定成员及分摊金额）
+-- paid_status: 0=待付 / 1=已付（成员线下自结，管理员确认核销）
+-- ============================================================
+CREATE TABLE expense_splits (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  expense_item_id INTEGER NOT NULL,
+  member_id       TEXT NOT NULL,
+  amount_cents    INTEGER NOT NULL CHECK (amount_cents >= 0),  -- 该成员分摊金额
+  paid_status     INTEGER NOT NULL DEFAULT 0
+                  CHECK (paid_status IN (0, 1)),
+  paid_at         INTEGER,                                    -- 成员确认已付时间
+  note            TEXT,
+  created_by      TEXT NOT NULL,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL,
+  archived_at     INTEGER,
+  FOREIGN KEY (expense_item_id) REFERENCES expense_items(id),
+  FOREIGN KEY (member_id)       REFERENCES members(id)
+);
+
+CREATE UNIQUE INDEX idx_expense_splits_uniq
+  ON expense_splits(expense_item_id, member_id)
+  WHERE archived_at IS NULL;
+CREATE INDEX idx_expense_splits_member   ON expense_splits(member_id) WHERE archived_at IS NULL;
+CREATE INDEX idx_expense_splits_paid     ON expense_splits(paid_status) WHERE archived_at IS NULL;
 
 -- ============================================================
 -- gear_status：个人装备状态
@@ -211,13 +234,33 @@ CREATE INDEX idx_audit_actor  ON audit_log(actor_id, created_at);
 ```sql
 -- 6 名成员 + 1 个管理员
 INSERT INTO members (id, username, display, group_name, role, created_at, updated_at) VALUES
-  ('m1', 'member01', '张一', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('m2', 'member02', '陈二', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('m3', 'member03', '王三', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('m4', 'member04', '李四', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('m5', 'member05', '赵五', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('m6', 'member06', '孙六', '北京汇合','member', strftime('%s','now'), strftime('%s','now')),
-  ('a1', 'admin',    '管理员','组织方',  'admin',  strftime('%s','now'), strftime('%s','now'));
+  ('m1', 'chener',      '陈尔',   '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('m2', 'zhangyi',     '张毅',   '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('m3', 'panbin',      '潘斌',   '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('m4', 'xuwei',       '徐伟',   '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('m5', 'xuxiaoyong',  '徐晓勇', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('m6', 'zhousong',    '周松',   '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
+  ('a1', 'admin',       '管理员', '组织方',  'admin',  strftime('%s','now'), strftime('%s','now'));
+
+-- 大项样例
+INSERT INTO expense_items (title, category, amount_cents, status, note, created_by, created_at, updated_at) VALUES
+  ('香港云顶酒店拼房 2 晚', '住宿', 96000, 1, '每人 ¥16000，共 6 人；m1 垫付', 'a1', strftime('%s','now'), strftime('%s','now')),
+  ('斯巴达报名费',         '赛事', 420000, 1, '每人 ¥700，共 6 人',             'a1', strftime('%s','now'), strftime('%s','now'));
+
+-- 分摊样例（机票大项均摊给 6 名成员，每人 ¥50000）
+INSERT INTO expense_splits (expense_item_id, member_id, amount_cents, paid_status, created_by, created_at, updated_at) VALUES
+  (1, 'm1', 16000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (1, 'm2', 16000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (1, 'm3', 16000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (1, 'm4', 16000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (1, 'm5', 16000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (1, 'm6', 16000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (2, 'm1', 70000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (2, 'm2', 70000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (2, 'm3', 70000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (2, 'm4', 70000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (2, 'm5', 70000, 0, 'a1', strftime('%s','now'), strftime('%s','now')),
+  (2, 'm6', 70000, 0, 'a1', strftime('%s','now'), strftime('%s','now'));
 
 -- 每位成员的待办任务样例
 INSERT INTO tasks (member_id, title, note, done, due_at, created_at, updated_at) VALUES
@@ -241,18 +284,33 @@ INSERT INTO announcements (title, body, priority, scope, publish_at, created_by)
 ## 5. 视图（可选）
 
 ```sql
--- 个人费用汇总
+-- 成员个人费用汇总（来自分摊）
 CREATE VIEW v_member_expense_summary AS
 SELECT
-  member_id,
-  COUNT(*) AS items,
-  SUM(amount_cents) AS total_cents,
-  SUM(paid_cents)   AS paid_cents,
-  SUM(amount_cents - paid_cents) AS pending_cents,
-  SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) AS settled_items
-FROM expenses
-WHERE archived_at IS NULL
-GROUP BY member_id;
+  es.member_id,
+  COUNT(*)                                    AS items,
+  SUM(es.amount_cents)                        AS total_cents,
+  SUM(CASE WHEN es.paid_status = 1 THEN es.amount_cents ELSE 0 END) AS paid_cents,
+  SUM(CASE WHEN es.paid_status = 0 THEN es.amount_cents ELSE 0 END) AS pending_cents
+FROM expense_splits es
+JOIN expense_items ei ON ei.id = es.expense_item_id
+WHERE es.archived_at IS NULL AND ei.archived_at IS NULL
+GROUP BY es.member_id;
+
+-- 大项汇总（含未分配金额）
+CREATE VIEW v_expense_items_with_balance AS
+SELECT
+  ei.id,
+  ei.title,
+  ei.category,
+  ei.amount_cents AS total_cents,
+  COALESCE(SUM(es.amount_cents), 0)           AS split_cents,
+  ei.amount_cents - COALESCE(SUM(es.amount_cents), 0) AS unassigned_cents
+FROM expense_items ei
+LEFT JOIN expense_splits es
+    ON es.expense_item_id = ei.id AND es.archived_at IS NULL
+WHERE ei.archived_at IS NULL
+GROUP BY ei.id;
 
 -- 团队总览
 CREATE VIEW v_team_overview AS
@@ -280,11 +338,11 @@ WHERE archived_at IS NULL;
 | `users[].name` | `members.display` | |
 | `users[].group` | `members.group_name` | |
 | `users[].role` | `members.role` | |
-| `expensesByUser[m1][*]` | `expenses.member_id='m1'` | 一行对应数据库一行 |
-| `expenses[].amount` | `expenses.amount_cents` | 客户端渲染时 ÷100 |
-| `expenses[].paid` | `expenses.paid_cents` | |
-| `expenses[].due` (`'2026-08-10'`) | `expenses.due_date` | 文本 |
-| `expenses[].category` | `expenses.category` | |
+| `expensesByUser[m1][*]` | `expense_splits.member_id='m1'` + `expense_items` | 大项+分摊模型 |
+| `expenses[].amount` | `expense_splits.amount_cents` | 客户端渲染时 ÷100 |
+| `expenses[].paid` | `expense_splits.paid_status` (0/1) | |
+| `expenses[].category` | `expense_items.category` | |
+| `expenses[].title` | `expense_items.title` | 大项名称 |
 | `gearStatusByUser[m1][item]` | `gear_status` | key 拆成 `(member_id, item_name)` |
 | `gearStatus[].status` (0/1/2/3) | `gear_status.status` | 一致 |
 | `tasksByUser[m1][*]` | `tasks.member_id='m1'` | 一行对应一条 task |
@@ -321,10 +379,11 @@ WHERE archived_at IS NULL;
 
 | 字段 | 值 | 含义 |
 |---|---|---|
-| `expenses.status` | 1 | 待支付 |
-| | 2 | 部分支付 |
-| | 3 | 已结清 |
-| | 4 | 已取消 |
+| `expense_items.status` | 1 | 待支付 |
+| | 2 | 已付清 |
+| | 3 | 已取消 |
+| `expense_splits.paid_status` | 0 | 待付 |
+| | 1 | 已付（成员线下自结，管理员核销） |
 | `gear_status.status` | 0 | 未确认 |
 | | 1 | 已有 |
 | | 2 | 待购买 |
@@ -342,9 +401,9 @@ WHERE archived_at IS NULL;
 | 表 | 高频查询 | 索引 |
 |---|---|---|
 | `members` | 登录：`WHERE username = ? AND archived_at IS NULL` | `idx_members_username` 唯一索引已覆盖 |
-| `expenses` | 成员费用列表：`WHERE member_id = ? AND archived_at IS NULL` | `idx_expenses_member` |
-| | 待办筛选：`WHERE status IN (1,2) AND due_date < ? AND archived_at IS NULL` | `idx_expenses_status` + `idx_expenses_due` |
-| | 垫付列表：`WHERE payer_id = ?` | `idx_expenses_payer` |
+| `expense_items` | 按分类/状态筛选 | `idx_expense_items_status` + `idx_expense_items_category` |
+| `expense_splits` | 成员分摊列表：`WHERE member_id = ? AND archived_at IS NULL` | `idx_expense_splits_member` |
+| | 成员待付/已付筛选 | `idx_expense_splits_paid` |
 | `gear_status` | 个人装备面板：`WHERE member_id = ?` | 主键覆盖 |
 | | 强制装备全员进度：`WHERE level = 'mandatory'` | 复合索引 `(member_id, level)` |
 | `tasks` | 个人待办：`WHERE member_id = ? AND done = 0` | 主键覆盖 + `idx_tasks_member_done` |
@@ -394,9 +453,8 @@ DELETE FROM tasks    WHERE archived_at IS NOT NULL AND archived_at < strftime('%
 
 | 客户端版本 | 服务端 schema 版本 | 说明 |
 |---|---|---|
-| v0.1.0 (原型) | v0.1 | 客户端走 `localStorage`；服务端 API 不启用 |
-| v0.2.0 (登录后端化) | v0.1 | 新增 `members` / `sessions`，客户端逐步迁移 |
-| v0.3.0 (完整后端化) | v0.1 | `expenses` / `gear_status` / `tasks` 全部走 API |
+| v0.1.0 (原型) | — | 客户端走 `localStorage`；服务端 API 不启用 |
+| v0.2.0 (登录+费用后端化) | v1.0 | 新增 `expense_items` + `expense_splits` 分摊模型；`expenses` 表废弃 |
 
 每次 `js/data.js` 字段调整，先升 schema 再升 API 再升前端，避免数据迁移断档。
 
