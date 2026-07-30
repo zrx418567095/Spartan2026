@@ -1312,12 +1312,9 @@
     }
     const setOpen = (open) => {
       mobile.classList.toggle('open', open);
+      btn.classList.toggle('is-open', open);
       btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      const icon = btn.querySelector('i');
-      if (icon) {
-        icon.classList.toggle('fa-bars', !open);
-        icon.classList.toggle('fa-xmark', open);
-      }
+      mobile.setAttribute('aria-hidden', open ? 'false' : 'true');
       // 打开时禁止 body 滚动
       document.body.style.overflow = open ? 'hidden' : '';
     };

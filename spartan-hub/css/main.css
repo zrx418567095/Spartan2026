@@ -224,10 +224,9 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   border: 1px solid var(--purple-soft);
 }
 
-/* 移动端汉堡图标切换 */
-.nav-hamburger .fa-xmark { display: none; }
-.nav-hamburger[aria-expanded="true"] .fa-bars { display: none; }
-.nav-hamburger[aria-expanded="true"] .fa-xmark { display: inline; }
+/* 移动端汉堡图标切换（通过 class 而非属性选择器） */
+.nav-hamburger .nav-icon { transition: transform 0.2s; }
+.nav-hamburger.is-open .nav-icon { transform: rotate(180deg); }
 
 /* ===== 卡片 / 网格 ===== */
 .grid { display: grid; gap: 1px; }
