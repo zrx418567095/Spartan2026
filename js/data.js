@@ -35,6 +35,8 @@ window.SPARTAN_HUB = {
     { id: 'guides', label: '比赛攻略' },
     { id: 'login', label: '登录', hideWhenAuth: true },
     { id: 'dashboard', label: '我的', requiresAuth: true, hideWhenGuest: true },
+    { id: 'admin-expense', label: '费用管理', requiresAuth: true, hideWhenGuest: true, adminOnly: true },
+    { id: 'admin-members', label: '成员管理', requiresAuth: true, hideWhenGuest: true, adminOnly: true },
     { id: 'logout', label: '退出', requiresAuth: true, hideWhenGuest: true }
   ],
 
@@ -232,50 +234,86 @@ window.SPARTAN_HUB = {
   ],
 
   users: {
-    member01: { id: 'm1', name: '张一', role: 'member', group: '广州组' },
-    member02: { id: 'm2', name: '陈二', role: 'member', group: '广州组' },
-    member03: { id: 'm3', name: '王三', role: 'member', group: '广州组' },
-    member04: { id: 'm4', name: '李四', role: 'member', group: '广州组' },
-    member05: { id: 'm5', name: '赵五', role: 'member', group: '广州组' },
-    member06: { id: 'm6', name: '孙六', role: 'member', group: '北京汇合' },
-    admin:    { id: 'a1', name: '管理员', role: 'admin',  group: '组织方' }
+    chener:      { id: 'm1', name: '陈尔',   role: 'member', group: '广州组' },
+    zhangyi:     { id: 'm2', name: '张毅',   role: 'member', group: '广州组' },
+    panbin:      { id: 'm3', name: '潘斌',   role: 'member', group: '广州组' },
+    xuwei:       { id: 'm4', name: '徐伟',   role: 'member', group: '广州组' },
+    xuxiaoyong:  { id: 'm5', name: '徐晓勇', role: 'member', group: '广州组' },
+    zhousong:    { id: 'm6', name: '周松',   role: 'member', group: '广州组' },
+    admin:       { id: 'a1', name: '管理员', role: 'admin',  group: '组织方' }
   },
 
-  expensesByUser: {
-    m1: [
-      { item: '云顶大酒店 2 晚', category: '住宿', amount: 800, paid: 800, due: '2026-08-10' },
-      { item: '北京⇌太子城高铁', category: '交通', amount: 178, paid: 178, due: '2026-08-13' },
-      { item: '京林洗浴过夜', category: '住宿', amount: 120, paid: 0,   due: '2026-08-14' },
-      { item: '庆功晚宴', category: '餐饮', amount: 126, paid: 0,   due: '2026-08-15' }
-    ],
-    m2: [
-      { item: '云顶大酒店 2 晚', category: '住宿', amount: 800, paid: 400, due: '2026-08-10' },
-      { item: '北京⇌太子城高铁', category: '交通', amount: 178, paid: 178, due: '2026-08-13' },
-      { item: '当地团队交通', category: '交通', amount: 210, paid: 0,   due: '2026-08-15' },
-      { item: '赛事报名费',     category: '赛事', amount: 909, paid: 909, due: '2026-07-30' }
-    ],
-    m3: [
-      { item: '云顶大酒店 2 晚', category: '住宿', amount: 800, paid: 800, due: '2026-08-10' },
-      { item: '北京⇌太子城高铁', category: '交通', amount: 178, paid: 178, due: '2026-08-13' },
-      { item: '赛事报名费',     category: '赛事', amount: 909, paid: 909, due: '2026-07-30' }
-    ],
-    m4: [
-      { item: '云顶大酒店 2 晚', category: '住宿', amount: 800, paid: 0,   due: '2026-08-10' },
-      { item: '北京⇌太子城高铁', category: '交通', amount: 178, paid: 0,   due: '2026-08-13' },
-      { item: '当地团队交通', category: '交通', amount: 210, paid: 0,   due: '2026-08-15' },
-      { item: '赛事报名费',     category: '赛事', amount: 909, paid: 909, due: '2026-07-30' }
-    ],
-    m5: [
-      { item: '云顶大酒店 2 晚', category: '住宿', amount: 800, paid: 800, due: '2026-08-10' },
-      { item: '北京⇌太子城高铁', category: '交通', amount: 178, paid: 178, due: '2026-08-13' },
-      { item: '赛事报名费',     category: '赛事', amount: 909, paid: 500, due: '2026-07-30' }
-    ],
-    m6: [
-      { item: '云顶大酒店 2 晚', category: '住宿', amount: 800, paid: 800, due: '2026-08-10' },
-      { item: '北京⇌太子城高铁', category: '交通', amount: 178, paid: 0,   due: '2026-08-13' },
-      { item: '当地团队交通', category: '交通', amount: 210, paid: 100, due: '2026-08-15' }
-    ]
-  },
+  // 费用大项（管理员录入）—— 模仿 expense_items 表
+  expenseItems: [
+    {
+      id: 'ei-001',
+      title: '云顶大酒店拼房 2 晚',
+      category: '住宿',
+      amountCents: 96000,
+      status: 'unpaid',
+      note: '6 人合住，标准间 3 间',
+      createdBy: 'a1'
+    },
+    {
+      id: 'ei-002',
+      title: '斯巴达报名费',
+      category: '赛事',
+      amountCents: 420000,
+      status: 'partial',
+      note: '6 人 × ¥700',
+      createdBy: 'a1'
+    },
+    {
+      id: 'ei-003',
+      title: '北京⇌太子城高铁',
+      category: '交通',
+      amountCents: 59400,
+      status: 'partial',
+      note: '6 人往返 × ¥99（仅去程）',
+      createdBy: 'a1'
+    },
+    {
+      id: 'ei-004',
+      title: '庆功晚宴 USBY 餐厅',
+      category: '餐饮',
+      amountCents: 18000,
+      status: 'unpaid',
+      note: '6 人聚餐预算',
+      createdBy: 'a1'
+    }
+  ],
+
+  // 费用分摊（成员+金额）—— 模仿 expense_splits 表
+  expenseSplits: [
+    // ei-001 住宿 96000 / 6 = 16000 每人
+    { id: 'sp-001', itemId: 'ei-001', memberId: 'm1', amountCents: 16000, paidStatus: 'paid' },
+    { id: 'sp-002', itemId: 'ei-001', memberId: 'm2', amountCents: 16000, paidStatus: 'partial' },
+    { id: 'sp-003', itemId: 'ei-001', memberId: 'm3', amountCents: 16000, paidStatus: 'paid' },
+    { id: 'sp-004', itemId: 'ei-001', memberId: 'm4', amountCents: 16000, paidStatus: 'unpaid' },
+    { id: 'sp-005', itemId: 'ei-001', memberId: 'm5', amountCents: 16000, paidStatus: 'paid' },
+    { id: 'sp-006', itemId: 'ei-001', memberId: 'm6', amountCents: 16000, paidStatus: 'paid' },
+    // ei-002 报名费 420000 / 6 = 70000 每人
+    { id: 'sp-007', itemId: 'ei-002', memberId: 'm1', amountCents: 70000, paidStatus: 'paid' },
+    { id: 'sp-008', itemId: 'ei-002', memberId: 'm2', amountCents: 70000, paidStatus: 'paid' },
+    { id: 'sp-009', itemId: 'ei-002', memberId: 'm3', amountCents: 70000, paidStatus: 'paid' },
+    { id: 'sp-010', itemId: 'ei-002', memberId: 'm4', amountCents: 70000, paidStatus: 'paid' },
+    { id: 'sp-011', itemId: 'ei-002', memberId: 'm5', amountCents: 70000, paidStatus: 'partial' },
+    { id: 'sp-012', itemId: 'ei-002', memberId: 'm6', amountCents: 70000, paidStatus: 'unpaid' },
+    // ei-003 高铁 59400 / 6 = 9900 每人
+    { id: 'sp-013', itemId: 'ei-003', memberId: 'm1', amountCents: 9900, paidStatus: 'paid' },
+    { id: 'sp-014', itemId: 'ei-003', memberId: 'm2', amountCents: 9900, paidStatus: 'paid' },
+    { id: 'sp-015', itemId: 'ei-003', memberId: 'm3', amountCents: 9900, paidStatus: 'paid' },
+    { id: 'sp-016', itemId: 'ei-003', memberId: 'm4', amountCents: 9900, paidStatus: 'unpaid' },
+    { id: 'sp-017', itemId: 'ei-003', memberId: 'm5', amountCents: 9900, paidStatus: 'paid' },
+    { id: 'sp-018', itemId: 'ei-003', memberId: 'm6', amountCents: 9900, paidStatus: 'unpaid' },
+    // ei-004 庆功 18000 / 6 = 3000 每人
+    { id: 'sp-019', itemId: 'ei-004', memberId: 'm1', amountCents: 3000, paidStatus: 'unpaid' },
+    { id: 'sp-020', itemId: 'ei-004', memberId: 'm2', amountCents: 3000, paidStatus: 'unpaid' },
+    { id: 'sp-021', itemId: 'ei-004', memberId: 'm3', amountCents: 3000, paidStatus: 'unpaid' },
+    { id: 'sp-022', itemId: 'ei-004', memberId: 'm4', amountCents: 3000, paidStatus: 'unpaid' },
+    { id: 'sp-023', itemId: 'ei-004', memberId: 'm5', amountCents: 3000, paidStatus: 'unpaid' },
+    { id: 'sp-024', itemId: 'ei-004', memberId: 'm6', amountCents: 3000, paidStatus: 'unpaid' }
+  ],
 
   gearStatusByUser: {
     m1: { '越野跑鞋（两双）': 1, '水袋背包 2L': 1, '能量补给（胶/糖/盐丸）': 2, '盐丸 × 10': 1, '全指手套': 1, '防水冲锋衣': 3, '头带 / 计时芯片': 1 },

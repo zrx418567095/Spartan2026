@@ -9,6 +9,26 @@
   const state = { user: null, view: 'home' };
   const STORAGE_KEY = 'spartan-hub-user';
 
+  // 后端未启动，原型数据落地到 localStorage 后能跨刷新保留
+  const DATA_KEY = 'spartan-hub-data';
+  function persistData() {
+    localStorage.setItem(DATA_KEY, JSON.stringify({
+      expenseItems: SPARTAN_HUB.expenseItems,
+      expenseSplits: SPARTAN_HUB.expenseSplits,
+      tasksByUser: SPARTAN_HUB.tasksByUser,
+      gearStatusByUser: SPARTAN_HUB.gearStatusByUser,
+      announcements: SPARTAN_HUB.announcements
+    }));
+  }
+  function restoreData() {
+    const saved = localStorage.getItem(DATA_KEY);
+    if (!saved) return;
+    try {
+      const obj = JSON.parse(saved);
+      Object.assign(SPARTAN_HUB, obj);
+    } catch (e) { /* ignore */ }
+  }
+
   const money = v => `¥${v.toLocaleString('zh-CN')}`;
   const img = (file, alt) => `<img src="./assets/${file}" alt="${alt}" loading="lazy" decoding="async">`;
   const downloadLink = (file, name) => `
@@ -16,7 +36,6 @@
       <span class="arrow">↓</span> 下载高清图
     </a>
   `;
-  // 文件名做 URL 编码：保留中文文件名
   const urlEncode = (s) => encodeURIComponent(s);
 
   function persist() {
@@ -56,6 +75,8 @@
       const isGuestItem = item.hideWhenGuest && !user;
       const isAuthedItem = item.hideWhenAuth && user;
       if (isAuthItem || isGuestItem || isAuthedItem) return '';
+      // 管理员专属
+      if (item.adminOnly && (!user || user.role !== 'admin')) return '';
       const action = item.id === 'logout'
         ? 'data-action="logout"'
         : `data-view="${item.id}"`;
@@ -67,7 +88,7 @@
 
     if (user) {
       const greet = document.createElement('li');
-      greet.innerHTML = `<a style="color: var(--purple-glow); cursor: default;">${user.name}</a>`;
+      greet.innerHTML = `<a style="color: var(--purple-glow); cursor: default;">${user.name}${user.role === 'admin' ? ' · 管理员' : ''}</a>`;
       links.prepend(greet);
     }
   }
@@ -89,6 +110,8 @@
       }
     });
   }
+
+  // ============== 页面渲染 ==============
 
   function renderHome() {
     const e = SPARTAN_HUB.event;
@@ -167,13 +190,13 @@
           <div class="sec-tag">Member Access</div>
           <h2 class="sec-title">登录查看个人费用与物资</h2>
           <div class="sec-line"></div>
-          <p class="sec-desc">原型阶段只需输入账号名，不构成真实安全认证。</p>
+          <p class="sec-desc">原型阶段只需输入账号名（全拼，小写），不构成真实安全认证。</p>
           <form class="login-form" id="loginForm">
-            <input id="loginInput" type="text" placeholder="试试 member01 / member04 / admin" autocomplete="username" required>
+            <input id="loginInput" type="text" placeholder="试试 chener / xuwei / admin" autocomplete="username" required>
             <button type="submit">进入工作台</button>
           </form>
           <div class="login-error" id="loginError" role="status"></div>
-          <div class="login-hint">演示账号：member01 · member02 · member03 · member04 · member05 · member06 · admin</div>
+          <div class="login-hint">演示账号：chener · zhangyi · panbin · xuwei · xuxiaoyong · zhousong · admin</div>
         </div>
       </section>
     `;
@@ -294,7 +317,7 @@
             <div class="stat"><div class="num">${c.distanceKm} km</div><div class="lbl">Total Distance</div></div>
             <div class="stat"><div class="num">${c.totalChallenges}</div><div class="lbl">总挑战 (38 + 34)</div></div>
             <div class="stat"><div class="num">${c.climb.toLocaleString('zh-CN')} m</div><div class="lbl">Uphill</div></div>
-            <div class="stat"><div class="num">${c.aidStations + c.aidPoints - c.aidStations}</div><div class="lbl">Aid Points</div></div>
+            <div class="stat"><div class="num">${c.aidPoints}</div><div class="lbl">Aid Points</div></div>
           </div>
 
           <h3 style="font-family:var(--display);font-size:1.3rem;letter-spacing:2px;color:var(--white);margin:32px 0 14px;">海拔剖面</h3>
@@ -426,6 +449,8 @@
     `;
   }
 
+  // ============ 个人工作台（成员 / 管理员） ============
+
   function renderDashboard() {
     if (!state.user) {
       return `
@@ -441,11 +466,12 @@
     }
 
     const user = SPARTAN_HUB.users[state.user];
-    const expenses = SPARTAN_HUB.expensesByUser[user.id] || [];
+    const isAdmin = user.role === 'admin';
+    const mySplits = SPARTAN_HUB.expenseSplits.filter(s => s.memberId === user.id);
+    const summary = Summary.summarizeMemberSplits(SPARTAN_HUB.expenseSplits, user.id);
     const gearMap = SPARTAN_HUB.gearStatusByUser[user.id] || {};
     const tasks = SPARTAN_HUB.tasksByUser[user.id] || [];
 
-    const summary = Summary.summarizeExpenses(expenses);
     const gear = Summary.summarizeGear(SPARTAN_HUB.publicGear, gearMap);
     const tasksDone = tasks.filter(t => t.done).length;
     const upcomingTask = tasks.find(t => !t.done);
@@ -456,16 +482,16 @@
           <div class="dashboard-head">
             <div>
               <div class="sec-tag">My Dashboard</div>
-              <div class="dashboard-name">你好，${user.name}</div>
-              <div class="dashboard-meta">${user.group} · ${user.role === 'admin' ? '管理员' : '团队成员'} · SPARTAN SUPER BEAST 2026</div>
+              <div class="dashboard-name">你好，${user.name}${isAdmin ? ' · 管理员' : ''}</div>
+              <div class="dashboard-meta">${user.group} · ${isAdmin ? '团队管理员' : '团队成员'} · SPARTAN SUPER BEAST 2026</div>
             </div>
             <button class="btn" data-action="logout">退出登录</button>
           </div>
 
           <div class="stat-grid">
-            <div class="stat"><div class="label">应承担费用</div><div class="value">${money(summary.total)}</div></div>
-            <div class="stat"><div class="label">已支付</div><div class="value green">${money(summary.paid)}</div></div>
-            <div class="stat"><div class="label">待支付</div><div class="value ${summary.pending > 0 ? 'red' : 'green'}">${money(summary.pending)}</div></div>
+            <div class="stat"><div class="label">应承担费用</div><div class="value">${Summary.formatCents(summary.totalCents)}</div></div>
+            <div class="stat"><div class="label">已支付</div><div class="value green">${Summary.formatCents(summary.paidCents)}</div></div>
+            <div class="stat"><div class="label">待支付</div><div class="value ${summary.pendingCents > 0 ? 'red' : 'green'}">${Summary.formatCents(summary.pendingCents)}</div></div>
             <div class="stat">
               <div class="label">物资准备</div>
               <div class="value purple">${gear.rate}%</div>
@@ -474,31 +500,34 @@
             </div>
           </div>
 
-          <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:24px 0 12px;color:var(--white);">费用明细</h3>
+          <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:24px 0 12px;color:var(--white);">我的费用分摊</h3>
+          ${mySplits.length === 0 ? '<div class="note">当前没有被分摊的费用。</div>' : `
           <div class="tbl-wrap">
             <table class="tbl">
               <thead>
-                <tr><th>项目</th><th>类别</th><th class="num">应付</th><th class="num">已付</th><th class="num">待付</th><th>截止</th><th>状态</th></tr>
+                <tr><th>费用大项</th><th>类别</th><th class="num">应付</th><th>截止</th><th>状态</th><th>操作</th></tr>
               </thead>
               <tbody>
-                ${expenses.map(expense => {
-                  const pending = expense.amount - expense.paid;
-                  const status = Summary.expenseStatus(expense);
+                ${mySplits.map(s => {
+                  const item = SPARTAN_HUB.expenseItems.find(i => i.id === s.itemId);
+                  const status = Summary.splitStatus(s);
                   return `
                     <tr>
-                      <td>${expense.item}</td>
-                      <td>${expense.category}</td>
-                      <td class="num">${money(expense.amount)}</td>
-                      <td class="num">${money(expense.paid)}</td>
-                      <td class="num">${money(pending)}</td>
-                      <td>${expense.due}</td>
+                      <td>${item ? item.title : '未知大项'}</td>
+                      <td>${item ? item.category : '-'}</td>
+                      <td class="num">${Summary.formatCents(s.amountCents)}</td>
+                      <td>${item && item.note ? item.note.slice(0, 24) : '-'}</td>
                       <td><span class="tag ${status}">${Summary.statusLabel(status)}</span></td>
+                      <td>
+                        <button class="btn-mini" data-mark-paid="${s.id}" ${s.paidStatus === 'paid' ? 'disabled' : ''}>标记已付</button>
+                      </td>
                     </tr>
                   `;
                 }).join('')}
               </tbody>
             </table>
           </div>
+          `}
 
           <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:36px 0 12px;color:var(--white);">个人物资</h3>
           <div class="grid grid-3">
@@ -520,17 +549,163 @@
           <ul class="task-list">
             ${tasks.map((task, index) => `
               <li>
-                <input type="checkbox" data-task="${index}" ${task.done ? 'checked' : ''}>
+                <input type="checkbox" data-task="${user.id}:${index}" ${task.done ? 'checked' : ''}>
                 <span class="${task.done ? 'done' : ''}">${task.title}</span>
               </li>
             `).join('')}
           </ul>
+
+          ${isAdmin ? `
+            <div class="note" style="margin-top:32px;">
+              你当前是 <strong style="color:var(--purple-glow);">管理员</strong>，可以前往
+              <a href="#" data-view="admin-expense" style="color:var(--purple-glow);">费用管理</a> /
+              <a href="#" data-view="admin-members" style="color:var(--purple-glow);">成员管理</a>
+              进行全队操作。
+            </div>
+          ` : ''}
 
           <div class="note">原型说明：所有数据保存在浏览器本地（localStorage），并不与他人同步，仅用于验证界面和流程。</div>
         </div>
       </section>
     `;
   }
+
+  // ============ 管理员 - 费用管理 ============
+
+  function renderAdminExpense() {
+    if (!state.user || SPARTAN_HUB.users[state.user].role !== 'admin') {
+      return `<section class="auth-strip"><div class="container"><h2 class="sec-title">需要管理员权限</h2></div></section>`;
+    }
+    const team = Summary.summarizeTeam(SPARTAN_HUB.expenseItems, SPARTAN_HUB.expenseSplits);
+    const items = Summary.summarizeItems(SPARTAN_HUB.expenseItems, SPARTAN_HUB.expenseSplits);
+
+    // 成员汇总（按 member 维度）
+    const memberIds = ['m1','m2','m3','m4','m5','m6'];
+    const memberSummaries = memberIds.map(mid => {
+      const u = SPARTAN_HUB.users[Object.keys(SPARTAN_HUB.users).find(k => SPARTAN_HUB.users[k].id === mid)];
+      return { memberId: mid, name: u ? u.name : mid, ...Summary.summarizeMemberSplits(SPARTAN_HUB.expenseSplits, mid) };
+    });
+
+    return `
+      <section class="section">
+        <div class="container">
+          <div class="sec-tag">Admin · Expense</div>
+          <h2 class="sec-title">费用管理</h2>
+          <div class="sec-line"></div>
+          <p class="sec-desc">管理员可创建费用大项并为指定成员分配分摊金额。成员在个人工作台可标记已付。</p>
+
+          <div class="stat-grid">
+            <div class="stat"><div class="label">大项总额</div><div class="value">${Summary.formatCents(team.itemTotal)}</div></div>
+            <div class="stat"><div class="label">已分摊</div><div class="value">${Summary.formatCents(team.splitTotal)}</div></div>
+            <div class="stat"><div class="label">未分配</div><div class="value ${team.unassignedTotal > 0 ? 'red' : 'green'}">${Summary.formatCents(team.unassignedTotal)}</div></div>
+            <div class="stat"><div class="label">已支付 / 待付</div><div class="value green">${Summary.formatCents(team.paidCents)} / <span style="color:var(--red);font-size:0.9em;">${Summary.formatCents(team.pendingCents)}</span></div></div>
+          </div>
+
+          <div style="margin: 24px 0;">
+            <button class="btn btn-primary" id="addItemBtn">+ 新增大项</button>
+            <button class="btn" id="exportCsvBtn">导出汇总 CSV</button>
+          </div>
+
+          <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:24px 0 12px;color:var(--white);">费用大项</h3>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr><th>ID</th><th>名称</th><th>类别</th><th class="num">总额</th><th class="num">已分摊</th><th class="num">未分配</th><th class="num">已付</th><th>状态</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                ${items.map(it => {
+                  const status = Summary.itemStatus(it, SPARTAN_HUB.expenseSplits);
+                  return `
+                    <tr>
+                      <td><code>${it.id}</code></td>
+                      <td><strong>${it.title}</strong>${it.note ? `<br><span style="color:var(--muted);font-size:0.75rem;">${it.note}</span>` : ''}</td>
+                      <td>${it.category}</td>
+                      <td class="num">${Summary.formatCents(it.amountCents)}</td>
+                      <td class="num">${Summary.formatCents(it.splitCents)} (${it.memberCount}人)</td>
+                      <td class="num ${it.unassignedCents > 0 ? 'red' : 'green'}">${Summary.formatCents(it.unassignedCents)}</td>
+                      <td class="num">${Summary.formatCents(it.paidCents)}</td>
+                      <td><span class="tag ${status}">${Summary.statusLabel(status)}</span></td>
+                      <td>
+                        <button class="btn-mini" data-edit-item="${it.id}">分摊</button>
+                        <button class="btn-mini btn-danger" data-del-item="${it.id}">删除</button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:36px 0 12px;color:var(--white);">成员汇总</h3>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr><th>成员</th><th class="num">分摊笔数</th><th class="num">应承担</th><th class="num">已付</th><th class="num">待付</th></tr>
+              </thead>
+              <tbody>
+                ${memberSummaries.map(ms => `
+                  <tr>
+                    <td><strong>${ms.name}</strong> <code>(${ms.memberId})</code></td>
+                    <td class="num">${ms.items}</td>
+                    <td class="num">${Summary.formatCents(ms.totalCents)}</td>
+                    <td class="num green">${Summary.formatCents(ms.paidCents)}</td>
+                    <td class="num ${ms.pendingCents > 0 ? 'red' : 'green'}">${Summary.formatCents(ms.pendingCents)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div id="adminExpenseModal"></div>
+        </div>
+      </section>
+    `;
+  }
+
+  function renderAdminMembers() {
+    if (!state.user || SPARTAN_HUB.users[state.user].role !== 'admin') {
+      return `<section class="auth-strip"><div class="container"><h2 class="sec-title">需要管理员权限</h2></div></section>`;
+    }
+    const memberIds = ['m1','m2','m3','m4','m5','m6'];
+    const rows = memberIds.map(mid => {
+      const username = Object.keys(SPARTAN_HUB.users).find(k => SPARTAN_HUB.users[k].id === mid);
+      const u = SPARTAN_HUB.users[username];
+      const ms = Summary.summarizeMemberSplits(SPARTAN_HUB.expenseSplits, mid);
+      const tasks = SPARTAN_HUB.tasksByUser[mid] || [];
+      const tasksDone = tasks.filter(t => t.done).length;
+      return `
+        <tr>
+          <td><strong>${u.name}</strong></td>
+          <td><code>${username}</code></td>
+          <td><code>${mid}</code></td>
+          <td>${u.group}</td>
+          <td class="num">${Summary.formatCents(ms.totalCents)}</td>
+          <td class="num red">${Summary.formatCents(ms.pendingCents)}</td>
+          <td class="num">${tasksDone} / ${tasks.length}</td>
+        </tr>
+      `;
+    }).join('');
+    return `
+      <section class="section">
+        <div class="container">
+          <div class="sec-tag">Admin · Members</div>
+          <h2 class="sec-title">成员管理</h2>
+          <div class="sec-line"></div>
+          <p class="sec-desc">查看所有成员的费用与任务进度。</p>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr><th>姓名</th><th>登录名（全拼）</th><th>业务 ID</th><th>组别</th><th class="num">应承担</th><th class="num">待付</th><th>任务进度</th></tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  // ============ 绑定交互 ============
 
   function bindLogin() {
     const form = $('#loginForm');
@@ -550,10 +725,11 @@
   function bindTasks() {
     document.querySelectorAll('input[data-task]').forEach(input => {
       input.addEventListener('change', event => {
-        const index = Number(event.target.getAttribute('data-task'));
-        const user = SPARTAN_HUB.users[state.user];
-        if (user) {
-          SPARTAN_HUB.tasksByUser[user.id][index].done = event.target.checked;
+        const [mid, idxStr] = event.target.getAttribute('data-task').split(':');
+        const index = Number(idxStr);
+        if (SPARTAN_HUB.tasksByUser[mid]) {
+          SPARTAN_HUB.tasksByUser[mid][index].done = event.target.checked;
+          persistData();
           render();
         }
       });
@@ -567,6 +743,220 @@
     btn.addEventListener('click', () => mobile.classList.toggle('open'));
   }
 
+  // 成员标记已付
+  function bindMarkPaid() {
+    document.querySelectorAll('[data-mark-paid]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-mark-paid');
+        const split = SPARTAN_HUB.expenseSplits.find(s => s.id === id);
+        if (!split) return;
+        const me = SPARTAN_HUB.users[state.user];
+        if (!me) return;
+        if (me.role === 'admin' || split.memberId === me.id) {
+          split.paidStatus = 'paid';
+          persistData();
+          render();
+        }
+      });
+    });
+  }
+
+  // 管理员 - 大项操作
+  function bindAdminExpense() {
+    const addBtn = $('#addItemBtn');
+    if (addBtn) addBtn.addEventListener('click', () => openItemModal(null));
+
+    const exportBtn = $('#exportCsvBtn');
+    if (exportBtn) exportBtn.addEventListener('click', exportCsv);
+
+    document.querySelectorAll('[data-edit-item]').forEach(btn => {
+      btn.addEventListener('click', () => openItemModal(btn.getAttribute('data-edit-item')));
+    });
+    document.querySelectorAll('[data-del-item]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-del-item');
+        if (confirm('确认删除该大项及其所有分摊？')) {
+          SPARTAN_HUB.expenseItems = SPARTAN_HUB.expenseItems.filter(i => i.id !== id);
+          SPARTAN_HUB.expenseSplits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId !== id);
+          persistData();
+          render();
+        }
+      });
+    });
+  }
+
+  function openItemModal(itemId) {
+    const item = itemId ? SPARTAN_HUB.expenseItems.find(i => i.id === itemId) : null;
+    const splits = item ? SPARTAN_HUB.expenseSplits.filter(s => s.itemId === itemId) : [];
+    const modal = $('#adminExpenseModal');
+    if (!modal) return;
+
+    const memberIds = ['m1','m2','m3','m4','m5','m6'];
+    const memberOptions = memberIds.map(mid => {
+      const username = Object.keys(SPARTAN_HUB.users).find(k => SPARTAN_HUB.users[k].id === mid);
+      const u = SPARTAN_HUB.users[username];
+      return `<label style="display:inline-flex;align-items:center;margin:4px 12px 4px 0;font-size:0.82rem;"><input type="checkbox" class="member-check" value="${mid}" data-username="${u.name}" ${splits.some(s => s.memberId === mid) ? 'checked' : ''}> ${u.name}</label>`;
+    }).join('');
+
+    modal.innerHTML = `
+      <div class="modal-mask" id="modalMask">
+        <div class="modal">
+          <div class="modal-head">
+            <h3>${item ? '编辑大项 / 分摊' : '新增费用大项'}</h3>
+            <button class="modal-close" id="modalClose">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-row">
+              <label>大项名称</label>
+              <input id="mTitle" type="text" value="${item ? item.title : ''}" placeholder="如：上海-香港机票">
+            </div>
+            <div class="form-row">
+              <label>类别</label>
+              <select id="mCategory">
+                ${['交通','住宿','餐饮','赛事','装备','其他'].map(c => `<option value="${c}" ${item && item.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-row">
+              <label>总金额（元）</label>
+              <input id="mAmount" type="number" min="0" step="0.01" value="${item ? (item.amountCents/100) : ''}" placeholder="0.00">
+            </div>
+            <div class="form-row">
+              <label>大项状态</label>
+              <select id="mStatus">
+                <option value="unpaid" ${item && item.status === 'unpaid' ? 'selected' : ''}>待支付</option>
+                <option value="partial" ${item && item.status === 'partial' ? 'selected' : ''}>部分结清</option>
+                <option value="paid" ${item && item.status === 'paid' ? 'selected' : ''}>已结清</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>备注</label>
+              <input id="mNote" type="text" value="${item ? (item.note || '') : ''}" placeholder="可选">
+            </div>
+            <div class="form-row">
+              <label>分配成员</label>
+              <div style="margin: 6px 0 10px;">${memberOptions}</div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button type="button" class="btn-mini" id="selectAllBtn">全选</button>
+                <button type="button" class="btn-mini" id="selectNoneBtn">全不选</button>
+                <span style="color:var(--muted);font-size:0.8rem;margin-left:12px;">均摊模式：</span>
+                <button type="button" class="btn-mini btn-primary" id="splitEvenBtn">一键均摊</button>
+              </div>
+            </div>
+            <div class="form-row">
+              <label>分摊明细（可手动修改金额）</label>
+              <div id="splitsList" style="border:1px solid var(--border);padding:8px;max-height:200px;overflow:auto;"></div>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn" id="modalCancel">取消</button>
+            <button class="btn btn-primary" id="modalSave">${item ? '保存' : '创建'}</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const renderSplitsList = () => {
+      const checked = Array.from(document.querySelectorAll('.member-check:checked'));
+      const list = $('#splitsList');
+      if (!list) return;
+      if (checked.length === 0) { list.innerHTML = '<div style="color:var(--muted);font-size:0.82rem;">尚未选择成员。</div>'; return; }
+      list.innerHTML = checked.map(cb => {
+        const mid = cb.value;
+        const name = cb.getAttribute('data-username');
+        const existing = splits.find(s => s.memberId === mid);
+        return `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="width:80px;font-size:0.85rem;">${name}</span>
+            <input type="number" class="split-amt" data-mid="${mid}" min="0" step="0.01" value="${existing ? existing.amountCents/100 : ''}" placeholder="0.00" style="flex:1;">
+            <span style="color:var(--muted);font-size:0.78rem;">元</span>
+          </div>
+        `;
+      }).join('');
+    };
+    renderSplitsList();
+
+    document.querySelectorAll('.member-check').forEach(cb => cb.addEventListener('change', renderSplitsList));
+    $('#selectAllBtn').addEventListener('click', () => { document.querySelectorAll('.member-check').forEach(cb => cb.checked = true); renderSplitsList(); });
+    $('#selectNoneBtn').addEventListener('click', () => { document.querySelectorAll('.member-check').forEach(cb => cb.checked = false); renderSplitsList(); });
+    $('#splitEvenBtn').addEventListener('click', () => {
+      const total = Number($('#mAmount').value);
+      const checked = Array.from(document.querySelectorAll('.member-check:checked'));
+      if (!total || checked.length === 0) { alert('请先填写总金额并选择成员'); return; }
+      const each = (total / checked.length).toFixed(2);
+      checked.forEach(cb => {
+        const input = document.querySelector(`.split-amt[data-mid="${cb.value}"]`);
+        if (input) input.value = each;
+      });
+    });
+
+    $('#modalClose').addEventListener('click', closeModal);
+    $('#modalCancel').addEventListener('click', closeModal);
+
+    $('#modalSave').addEventListener('click', () => {
+      const title = $('#mTitle').value.trim();
+      const category = $('#mCategory').value;
+      const amount = Math.round(Number($('#mAmount').value) * 100);
+      const status = $('#mStatus').value;
+      const note = $('#mNote').value.trim();
+      if (!title || !amount) { alert('名称与金额必填'); return; }
+
+      let targetItemId;
+      if (item) {
+        Object.assign(item, { title, category, amountCents: amount, status, note });
+        targetItemId = item.id;
+        // 删除旧分摊，重新写
+        SPARTAN_HUB.expenseSplits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId !== targetItemId);
+      } else {
+        targetItemId = 'ei-' + Date.now();
+        SPARTAN_HUB.expenseItems.push({ id: targetItemId, title, category, amountCents: amount, status, note, createdBy: 'a1' });
+      }
+
+      // 写入新分摊
+      const checked = Array.from(document.querySelectorAll('.member-check:checked'));
+      checked.forEach(cb => {
+        const mid = cb.value;
+        const amtInput = document.querySelector(`.split-amt[data-mid="${mid}"]`);
+        const amt = Math.round(Number(amtInput.value) * 100);
+        if (!amt) return;
+        SPARTAN_HUB.expenseSplits.push({
+          id: 'sp-' + Date.now() + '-' + mid,
+          itemId: targetItemId,
+          memberId: mid,
+          amountCents: amt,
+          paidStatus: 'unpaid'
+        });
+      });
+
+      persistData();
+      closeModal();
+      render();
+    });
+  }
+
+  function closeModal() {
+    const modal = $('#adminExpenseModal');
+    if (modal) modal.innerHTML = '';
+  }
+
+  function exportCsv() {
+    const rows = [['成员', '应承担(元)', '已付(元)', '待付(元)', '笔数']];
+    ['m1','m2','m3','m4','m5','m6'].forEach(mid => {
+      const u = SPARTAN_HUB.users[Object.keys(SPARTAN_HUB.users).find(k => SPARTAN_HUB.users[k].id === mid)];
+      const ms = Summary.summarizeMemberSplits(SPARTAN_HUB.expenseSplits, mid);
+      rows.push([u.name, ms.totalCents/100, ms.paidCents/100, ms.pendingCents/100, ms.items]);
+    });
+    const csv = '\uFEFF' + rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `spartan-expense-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ============ 主渲染 ============
+
   function render() {
     const view = state.user && state.view === 'login' ? 'home' : state.view;
     const views = {
@@ -574,18 +964,23 @@
       itinerary: renderItinerary,
       gear: renderGear,
       guides: renderGuides,
-      dashboard: renderDashboard
+      dashboard: renderDashboard,
+      'admin-expense': renderAdminExpense,
+      'admin-members': renderAdminMembers
     };
-    $('#main').innerHTML = views[view]();
+    $('#main').innerHTML = (views[view] || renderHome)();
     renderNav();
     bindLogin();
     bindTasks();
+    bindMarkPaid();
+    bindAdminExpense();
     if (state.view === 'home' && window.SpartanWeather) {
       window.SpartanWeather.loadAndRender();
     }
   }
 
   function init() {
+    restoreData();
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved && SPARTAN_HUB.users[saved]) state.user = saved;
     bindDelegatedClicks();

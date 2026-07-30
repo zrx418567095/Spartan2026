@@ -665,3 +665,140 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   .dashboard-head { flex-direction: column; align-items: flex-start; }
   .earn-banner .text { font-size: 2.2rem; letter-spacing: 6px; }
 }
+
+/* ===== 工作台头部 ===== */
+.dashboard-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 28px;
+}
+.dashboard-name {
+  font-family: var(--display); font-size: 1.8rem;
+  letter-spacing: 2px; color: var(--white); margin: 6px 0;
+}
+.dashboard-meta { color: var(--muted); font-size: 0.78rem; }
+
+/* ===== 统计卡片网格 ===== */
+.stat-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 1px; background: var(--border);
+  border: 1px solid var(--border); margin-bottom: 28px;
+}
+.stat {
+  background: var(--ink-2); padding: 22px;
+}
+.stat .label {
+  font-size: 0.68rem; letter-spacing: 2px;
+  color: var(--muted); text-transform: uppercase; margin-bottom: 8px;
+}
+.stat .value {
+  font-family: var(--display); font-size: 1.8rem;
+  letter-spacing: 1px; color: var(--white);
+}
+.stat .value.green { color: #74d27b; }
+.stat .value.red { color: #ff7a8a; }
+.stat .value.purple { color: var(--purple-glow); }
+.stat .progress {
+  height: 6px; background: var(--ink-3);
+  border-radius: 3px; overflow: hidden; margin-top: 12px;
+}
+.stat .progress span {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, var(--purple-soft), var(--purple-glow));
+  transition: width 0.3s;
+}
+
+/* ===== 按钮 ===== */
+.btn {
+  display: inline-block; padding: 8px 16px;
+  border: 1px solid var(--border-light); border-radius: 2px;
+  background: transparent; color: var(--white);
+  font-size: 0.78rem; letter-spacing: 1.5px;
+  text-transform: uppercase; transition: all 0.2s;
+}
+.btn:hover { border-color: var(--purple-soft); color: var(--purple-glow); }
+.btn-primary {
+  background: var(--purple-deep); border-color: var(--purple-soft);
+  color: var(--white);
+}
+.btn-primary:hover {
+  background: var(--purple); border-color: var(--purple-glow);
+  color: var(--white);
+}
+.btn-mini {
+  display: inline-block; padding: 4px 10px;
+  border: 1px solid var(--border-light); border-radius: 2px;
+  background: transparent; color: var(--muted);
+  font-size: 0.72rem; letter-spacing: 0.5px;
+  cursor: pointer; transition: all 0.2s; margin-right: 4px;
+}
+.btn-mini:hover { border-color: var(--purple-soft); color: var(--purple-glow); }
+.btn-mini.btn-primary { background: var(--purple-deep); border-color: var(--purple-soft); color: var(--white); }
+.btn-mini.btn-danger { border-color: var(--red); color: #ff7a8a; }
+.btn-mini.btn-danger:hover { background: var(--red); color: var(--white); }
+.btn-mini:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ===== 任务列表 ===== */
+.task-list { list-style: none; padding: 0; }
+.task-list li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+.task-list li:last-child { border-bottom: none; }
+.task-list input[type="checkbox"] { accent-color: var(--purple-glow); cursor: pointer; }
+.task-list .done { color: var(--muted); text-decoration: line-through; }
+
+/* ===== 提示条 ===== */
+.note {
+  background: rgba(179, 136, 255, 0.06);
+  border-left: 3px solid var(--purple-glow);
+  padding: 10px 16px; color: var(--muted); font-size: 0.82rem;
+  margin: 12px 0;
+}
+
+/* ===== 模态框 ===== */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2000; padding: 20px;
+}
+.modal {
+  background: var(--ink-2); border: 1px solid var(--border-light);
+  max-width: 640px; width: 100%; max-height: 90vh; overflow: auto;
+  border-radius: 4px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px; border-bottom: 1px solid var(--border);
+}
+.modal-head h3 {
+  font-family: var(--display); font-size: 1.3rem;
+  letter-spacing: 2px; color: var(--white);
+}
+.modal-close {
+  font-size: 1.6rem; color: var(--muted);
+  background: none; border: none; cursor: pointer;
+  line-height: 1; padding: 0 4px;
+}
+.modal-close:hover { color: var(--white); }
+.modal-body { padding: 20px 24px; }
+.modal-foot {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 14px 24px; border-top: 1px solid var(--border);
+}
+.form-row { margin-bottom: 14px; }
+.form-row label {
+  display: block; font-size: 0.72rem; letter-spacing: 1px;
+  color: var(--muted); text-transform: uppercase; margin-bottom: 6px;
+}
+.form-row input[type="text"],
+.form-row input[type="number"],
+.form-row select {
+  width: 100%; padding: 8px 12px;
+  background: var(--ink); border: 1px solid var(--border-light);
+  color: var(--white); font-size: 0.88rem;
+  border-radius: 2px;
+}
+.form-row input:focus, .form-row select:focus {
+  outline: none; border-color: var(--purple-soft);
+}
