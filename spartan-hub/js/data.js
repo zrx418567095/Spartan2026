@@ -148,6 +148,43 @@ window.SPARTAN_HUB = {
     { level: 'optional',   category: '可选', name: '布洛芬 / 云南白药' }
   ],
 
+  // 能量补给方案（碳水 + 电解质，按时间节奏补给）
+  nutrition: [
+    {
+      id: 'maisheng-gel',
+      brand: '迈胜黑胶',
+      qty: '8 条',
+      image: '迈胜黑胶.jpg',
+      carbs: '40 g / 条',
+      timing: '双数钟吃一条',
+      icon: 'fa-bolt',
+      accent: '#f30d2d',
+      desc: '浓缩碳水凝胶，单条提供 40 g 碳水化合物，供能高效。每 2 小时整点食用，确保持续能量供应。'
+    },
+    {
+      id: 'sis-gel',
+      brand: 'SIS 等渗水果胶',
+      qty: '15 条',
+      image: 'SIS水果胶.jpg',
+      carbs: '20 g / 条',
+      timing: '单数钟吃 1-2 条',
+      icon: 'fa-droplet',
+      accent: '#7b2cbf',
+      desc: '等渗配方水果胶，无需额外饮水即可吸收。每 1 小时单数点补充 1-2 条，平衡血糖与水分。'
+    },
+    {
+      id: 'maisheng-electrolyte',
+      brand: '迈胜电解质浓缩液',
+      qty: '10 条',
+      image: '电解质浓缩液.jpg',
+      carbs: '电解质 800 mg / 条',
+      timing: '1.5 小时一条',
+      icon: 'fa-bolt-lightning',
+      accent: '#00b4d8',
+      desc: '高浓度电解质补给，预防抽筋与脱水。每 1.5 小时补充一条；抽筋或大爬升段即时加补。'
+    }
+  ],
+
   // 强制装备（来自 640 (1).webp 头带 + 计时芯片 + GPS）
   mandatoryGear: [
     '头带 / 计时芯片',

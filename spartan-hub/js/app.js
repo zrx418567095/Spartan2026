@@ -336,6 +336,33 @@
       </div>
     `).join('');
 
+    const nutrition = SPARTAN_HUB.nutrition || [];
+    const renderNutrition = nutrition.map(n => `
+      <div class="nutrition-card" style="--accent:${n.accent};">
+        <div class="nutrition-image">
+          ${img(urlEncode(n.image), n.brand + ' 实物图')}
+          <span class="nutrition-qty">${n.qty}</span>
+        </div>
+        <div class="nutrition-body">
+          <div class="nutrition-head">
+            <i class="fa-solid ${n.icon}"></i>
+            <h4>${n.brand}</h4>
+          </div>
+          <div class="nutrition-stats">
+            <div class="nutrition-stat">
+              <span class="lbl">碳水/电解质</span>
+              <span class="val">${n.carbs}</span>
+            </div>
+            <div class="nutrition-stat">
+              <span class="lbl">节奏</span>
+              <span class="val">${n.timing}</span>
+            </div>
+          </div>
+          <p class="nutrition-desc">${n.desc}</p>
+        </div>
+      </div>
+    `).join('');
+
     return `
       <section class="section">
         <div class="container">
@@ -362,6 +389,16 @@
 
           <h3 style="font-family:var(--display);font-size:1.3rem;letter-spacing:2px;color:var(--white);margin:32px 0 12px;">可选装备 · Optional</h3>
           <div class="grid grid-3">${renderBlock('可选', optional, 'optional')}</div>
+
+          <div class="nutrition-section">
+            <div class="sec-tag" style="color: var(--accent, #f30d2d);">Nutrition · 能量补给</div>
+            <h3 style="font-family:var(--display);font-size:1.6rem;letter-spacing:3px;color:var(--white);margin:24px 0 8px;">
+              能量补给方案
+            </h3>
+            <div class="sec-line"></div>
+            <p class="sec-desc">49.6 km 超级野兽赛能量管理 · 8 + 15 + 10 共 33 条补给，按时间节奏分段摄入。</p>
+            <div class="nutrition-grid">${renderNutrition}</div>
+          </div>
 
           <p class="sec-desc" style="margin-top:32px;">个人物资状态请登录后在“我的工作台”查看与更新。</p>
         </div>
