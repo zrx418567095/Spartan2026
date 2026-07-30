@@ -544,6 +544,13 @@
     const tasksDone = tasks.filter(t => t.done).length;
     const upcomingTask = tasks.find(t => !t.done);
 
+    // 管理员视图需要团队汇总
+    const team = Summary.summarizeTeam(SPARTAN_HUB.expenseItems, SPARTAN_HUB.expenseSplits);
+    const memberSummaries = Object.entries(SPARTAN_HUB.users)
+      .filter(([_, u]) => u.role !== 'admin')
+      .map(([_, u]) => ({ memberId: u.id, name: u.name, ...Summary.summarizeMemberSplits(SPARTAN_HUB.expenseSplits, u.id) }));
+    const paidMembers = memberSummaries.filter(m => m.pendingCents === 0).length;
+
     return `
       <section class="section">
         <div class="container">
@@ -628,6 +635,12 @@
             <div class="admin-shortcut">
               <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:36px 0 12px;color:var(--white);">管理员操作</h3>
               <div class="grid grid-3">
+                <a class="card admin-card lg" href="#" data-view="admin-hub" style="border-color: var(--purple-soft);">
+                  <span class="badge" style="background: var(--purple-glow); border-color: var(--purple-glow); color: #000;">HUB</span>
+                  <h4>管理后台</h4>
+                  <p>查看团队总览、<br>团队结清进度。</p>
+                  <div class="admin-card-meta">${Summary.formatCents(team.itemTotal)} 总额 · ${paidMembers}/${memberSummaries.length} 已结清</div>
+                </a>
                 <a class="card admin-card" href="#" data-view="admin-announcements">
                   <span class="badge">公告</span>
                   <h4>公告管理</h4>
@@ -644,7 +657,7 @@
                   <span class="badge">成员</span>
                   <h4>成员管理</h4>
                   <p>查看 6 名成员费用<br>与任务进度。</p>
-                  <div class="admin-card-meta">6 名运动员</div>
+                  <div class="admin-card-meta">${Object.values(SPARTAN_HUB.users).filter(u => u.role !== 'admin').length} 名运动员</div>
                 </a>
               </div>
             </div>
