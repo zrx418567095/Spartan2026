@@ -556,11 +556,28 @@
           </ul>
 
           ${isAdmin ? `
-            <div class="note" style="margin-top:32px;">
-              你当前是 <strong style="color:var(--purple-glow);">管理员</strong>，可以前往
-              <a href="#" data-view="admin-expense" style="color:var(--purple-glow);">费用管理</a> /
-              <a href="#" data-view="admin-members" style="color:var(--purple-glow);">成员管理</a>
-              进行全队操作。
+            <div class="admin-shortcut">
+              <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:36px 0 12px;color:var(--white);">管理员操作</h3>
+              <div class="grid grid-3">
+                <a class="card admin-card" href="#" data-view="admin-announcements">
+                  <span class="badge">公告</span>
+                  <h4>公告管理</h4>
+                  <p>发布 / 编辑 / 删除赛事公告，<br>置顶重要信息。</p>
+                  <div class="admin-card-meta">${SPARTAN_HUB.announcements.length} 条公告</div>
+                </a>
+                <a class="card admin-card" href="#" data-view="admin-expense">
+                  <span class="badge">费用</span>
+                  <h4>费用管理</h4>
+                  <p>录入费用大项，<br>为成员分配分摊金额。</p>
+                  <div class="admin-card-meta">${SPARTAN_HUB.expenseItems.length} 个大项 / ${SPARTAN_HUB.expenseSplits.length} 条分摊</div>
+                </a>
+                <a class="card admin-card" href="#" data-view="admin-members">
+                  <span class="badge">成员</span>
+                  <h4>成员管理</h4>
+                  <p>查看 6 名成员费用<br>与任务进度。</p>
+                  <div class="admin-card-meta">6 名运动员</div>
+                </a>
+              </div>
             </div>
           ` : ''}
 
@@ -700,6 +717,124 @@
               <tbody>${rows}</tbody>
             </table>
           </div>
+        </div>
+      </section>
+    `;
+  }
+
+  // ============ 管理员 - 管理后台首页 ============
+
+  function renderAdminHub() {
+    if (!state.user || SPARTAN_HUB.users[state.user].role !== 'admin') {
+      return `<section class="auth-strip"><div class="container"><h2 class="sec-title">需要管理员权限</h2></div></section>`;
+    }
+    const team = Summary.summarizeTeam(SPARTAN_HUB.expenseItems, SPARTAN_HUB.expenseSplits);
+    const memberIds = ['m1','m2','m3','m4','m5','m6'];
+    const memberSummaries = memberIds.map(mid => {
+      const u = SPARTAN_HUB.users[Object.keys(SPARTAN_HUB.users).find(k => SPARTAN_HUB.users[k].id === mid)];
+      return { name: u ? u.name : mid, ...Summary.summarizeMemberSplits(SPARTAN_HUB.expenseSplits, mid) };
+    });
+    const totalPending = memberSummaries.reduce((s, m) => s + m.pendingCents, 0);
+    const paidMembers = memberSummaries.filter(m => m.pendingCents === 0).length;
+
+    return `
+      <section class="section">
+        <div class="container">
+          <div class="dashboard-head">
+            <div>
+              <div class="sec-tag">Admin Console</div>
+              <div class="dashboard-name">管理后台</div>
+              <div class="dashboard-meta">${SPARTAN_HUB.users[state.user].name} · 团队管理员</div>
+            </div>
+            <button class="btn" data-action="logout">退出登录</button>
+          </div>
+
+          <div class="stat-grid">
+            <div class="stat"><div class="label">大项总额</div><div class="value">${Summary.formatCents(team.itemTotal)}</div></div>
+            <div class="stat"><div class="label">已结清</div><div class="value green">${Summary.formatCents(team.paidCents)}</div></div>
+            <div class="stat"><div class="label">待结清</div><div class="value red">${Summary.formatCents(totalPending)}</div></div>
+            <div class="stat"><div class="label">已结清成员</div><div class="value purple">${paidMembers} / ${memberIds.length}</div></div>
+          </div>
+
+          <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:32px 0 14px;color:var(--white);">管理模块</h3>
+          <div class="admin-card-grid">
+            <a class="card admin-card lg" href="#" data-view="admin-announcements">
+              <span class="badge">公告</span>
+              <h4>公告管理</h4>
+              <p>发布、编辑、删除赛事公告，支持置顶。</p>
+              <div class="admin-card-meta">${SPARTAN_HUB.announcements.length} 条公告</div>
+            </a>
+            <a class="card admin-card lg" href="#" data-view="admin-expense">
+              <span class="badge">费用</span>
+              <h4>费用管理</h4>
+              <p>录入费用大项，为成员分配分摊金额，支持一键均摊与 CSV 导出。</p>
+              <div class="admin-card-meta">${SPARTAN_HUB.expenseItems.length} 大项 · ${SPARTAN_HUB.expenseSplits.length} 分摊</div>
+            </a>
+            <a class="card admin-card lg" href="#" data-view="admin-members">
+              <span class="badge">成员</span>
+              <h4>成员管理</h4>
+              <p>查看 6 名成员的费用、待付与任务进度。</p>
+              <div class="admin-card-meta">${memberIds.length} 名运动员</div>
+            </a>
+          </div>
+
+          <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:36px 0 12px;color:var(--white);">成员待付速览</h3>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>成员</th><th class="num">应承担</th><th class="num">已付</th><th class="num">待付</th></tr></thead>
+              <tbody>
+                ${memberSummaries.map(m => `
+                  <tr>
+                    <td><strong>${m.name}</strong></td>
+                    <td class="num">${Summary.formatCents(m.totalCents)}</td>
+                    <td class="num green">${Summary.formatCents(m.paidCents)}</td>
+                    <td class="num ${m.pendingCents > 0 ? 'red' : 'green'}">${Summary.formatCents(m.pendingCents)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  // ============ 管理员 - 公告管理 ============
+
+  function renderAdminAnnouncements() {
+    if (!state.user || SPARTAN_HUB.users[state.user].role !== 'admin') {
+      return `<section class="auth-strip"><div class="container"><h2 class="sec-title">需要管理员权限</h2></div></section>`;
+    }
+    const priorityLabels = { high: '高', mid: '中', low: '低' };
+    return `
+      <section class="section">
+        <div class="container">
+          <div class="sec-tag">Admin · Announcements</div>
+          <h2 class="sec-title">公告管理</h2>
+          <div class="sec-line"></div>
+          <p class="sec-desc">发布赛事公告、集合安排、规则更新等。首页"最新公告"区域按发布时间倒序展示。</p>
+
+          <div style="margin: 16px 0 24px;">
+            <button class="btn btn-primary" id="addAnnBtn">+ 发布公告</button>
+          </div>
+
+          <div class="ann-list">
+            ${SPARTAN_HUB.announcements.map((a, idx) => `
+              <div class="ann-row">
+                <div class="ann-priority ${a.priority}">${priorityLabels[a.priority] || '中'}</div>
+                <div class="ann-body">
+                  <div class="ann-title">${a.title}</div>
+                  <div class="ann-time">${a.time}</div>
+                </div>
+                <div class="ann-actions">
+                  <button class="btn-mini btn-danger" data-del-ann="${idx}">删除</button>
+                </div>
+              </div>
+            `).join('')}
+            ${SPARTAN_HUB.announcements.length === 0 ? '<div class="note">暂无公告。</div>' : ''}
+          </div>
+
+          <div id="annModal"></div>
         </div>
       </section>
     `;
@@ -955,6 +1090,81 @@
     URL.revokeObjectURL(url);
   }
 
+  // 公告管理
+  function bindAdminAnnouncements() {
+    const addBtn = $('#addAnnBtn');
+    if (addBtn) addBtn.addEventListener('click', () => openAnnModal());
+
+    document.querySelectorAll('[data-del-ann]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.getAttribute('data-del-ann'));
+        if (confirm('确认删除该公告？')) {
+          SPARTAN_HUB.announcements.splice(idx, 1);
+          persistData();
+          render();
+        }
+      });
+    });
+  }
+
+  function openAnnModal() {
+    const modal = $('#annModal');
+    if (!modal) return;
+    modal.innerHTML = `
+      <div class="modal-mask">
+        <div class="modal">
+          <div class="modal-head">
+            <h3>发布新公告</h3>
+            <button class="modal-close" id="annModalClose">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-row">
+              <label>标题</label>
+              <input id="annTitle" type="text" placeholder="如：8/13 19:00 番禺广场集合" required>
+            </div>
+            <div class="form-row">
+              <label>正文</label>
+              <input id="annBody" type="text" placeholder="公告正文内容">
+            </div>
+            <div class="form-row">
+              <label>优先级</label>
+              <select id="annPriority">
+                <option value="high">高（紧急）</option>
+                <option value="mid" selected>中（一般）</option>
+                <option value="low">低（参考）</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>发布日期</label>
+              <input id="annTime" type="date" value="${new Date().toISOString().slice(0,10)}">
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn" id="annModalCancel">取消</button>
+            <button class="btn btn-primary" id="annModalSave">发布</button>
+          </div>
+        </div>
+      </div>
+    `;
+    $('#annModalClose').addEventListener('click', () => modal.innerHTML = '');
+    $('#annModalCancel').addEventListener('click', () => modal.innerHTML = '');
+    $('#annModalSave').addEventListener('click', () => {
+      const title = $('#annTitle').value.trim();
+      if (!title) { alert('标题必填'); return; }
+      const newAnn = {
+        title,
+        body: $('#annBody').value.trim(),
+        priority: $('#annPriority').value,
+        time: $('#annTime').value || new Date().toISOString().slice(0,10)
+      };
+      // 新公告插入到数组开头（最新优先展示）
+      SPARTAN_HUB.announcements.unshift(newAnn);
+      persistData();
+      modal.innerHTML = '';
+      render();
+    });
+  }
+
   // ============ 主渲染 ============
 
   function render() {
@@ -965,6 +1175,8 @@
       gear: renderGear,
       guides: renderGuides,
       dashboard: renderDashboard,
+      'admin-hub': renderAdminHub,
+      'admin-announcements': renderAdminAnnouncements,
       'admin-expense': renderAdminExpense,
       'admin-members': renderAdminMembers
     };
@@ -974,6 +1186,7 @@
     bindTasks();
     bindMarkPaid();
     bindAdminExpense();
+    bindAdminAnnouncements();
     if (state.view === 'home' && window.SpartanWeather) {
       window.SpartanWeather.loadAndRender();
     }

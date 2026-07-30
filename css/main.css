@@ -802,3 +802,93 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .form-row input:focus, .form-row select:focus {
   outline: none; border-color: var(--purple-soft);
 }
+
+/* ===== 管理后台卡片 ===== */
+.admin-card-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 16px; margin-bottom: 32px;
+}
+.admin-card {
+  display: block; transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+.admin-card:hover {
+  border-left-color: var(--purple-glow);
+  transform: translateY(-3px);
+  text-decoration: none;
+}
+.admin-card.lg {
+  padding: 24px;
+  min-height: 160px;
+}
+.admin-card h4 {
+  font-size: 1.05rem;
+  margin: 10px 0 8px;
+}
+.admin-card p {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.admin-card-meta {
+  font-size: 0.7rem;
+  color: var(--purple-glow);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: auto;
+}
+
+.admin-shortcut { margin-top: 32px; }
+
+/* ===== 公告管理列表 ===== */
+.ann-list {
+  border: 1px solid var(--border);
+  background: var(--ink-2);
+}
+.ann-row {
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.ann-row:last-child { border-bottom: none; }
+.ann-priority {
+  flex-shrink: 0; width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-size: 0.9rem;
+  letter-spacing: 1px;
+  border: 1px solid var(--border-light);
+  color: var(--muted);
+}
+.ann-priority.high { border-color: var(--red); color: #ff7a8a; background: rgba(200, 16, 46, 0.08); }
+.ann-priority.mid { border-color: var(--purple-soft); color: var(--purple-glow); background: rgba(106, 27, 154, 0.08); }
+.ann-priority.low { border-color: var(--border-light); color: var(--muted); }
+.ann-body { flex: 1; min-width: 0; }
+.ann-title {
+  font-size: 0.95rem;
+  color: var(--white);
+  margin-bottom: 4px;
+}
+.ann-time {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+.ann-actions { flex-shrink: 0; }
+
+/* ===== 二维码、提示框等补充 ===== */
+code {
+  background: var(--ink-3); padding: 1px 6px;
+  border-radius: 2px; font-family: var(--mono);
+  font-size: 0.78rem; color: var(--purple-glow);
+}
+
+/* ===== 响应式补充 ===== */
+@media (max-width: 900px) {
+  .admin-card-grid { grid-template-columns: 1fr; }
+  .ann-row { flex-wrap: wrap; }
+  .ann-body { width: 100%; order: 2; }
+  .ann-actions { order: 3; }
+}

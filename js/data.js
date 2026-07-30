@@ -35,8 +35,10 @@ window.SPARTAN_HUB = {
     { id: 'guides', label: '比赛攻略' },
     { id: 'login', label: '登录', hideWhenAuth: true },
     { id: 'dashboard', label: '我的', requiresAuth: true, hideWhenGuest: true },
-    { id: 'admin-expense', label: '费用管理', requiresAuth: true, hideWhenGuest: true, adminOnly: true },
-    { id: 'admin-members', label: '成员管理', requiresAuth: true, hideWhenGuest: true, adminOnly: true },
+    { id: 'admin-hub', label: '管理后台', requiresAuth: true, hideWhenGuest: true, adminOnly: true },
+    { id: 'admin-announcements', label: '公告', requiresAuth: true, hideWhenGuest: true, adminOnly: true },
+    { id: 'admin-expense', label: '费用', requiresAuth: true, hideWhenGuest: true, adminOnly: true },
+    { id: 'admin-members', label: '成员', requiresAuth: true, hideWhenGuest: true, adminOnly: true },
     { id: 'logout', label: '退出', requiresAuth: true, hideWhenGuest: true }
   ],
 
