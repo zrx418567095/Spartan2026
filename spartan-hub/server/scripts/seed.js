@@ -65,5 +65,43 @@ if (itemCount === 0) {
   console.log('[seed] expense items already exist, skip.');
 }
 
+// 公告：仅在 announcements 为空时插入
+const annCount = handle.prepare('SELECT COUNT(*) AS c FROM announcements').get().c;
+if (annCount === 0) {
+  console.log('[seed] announcements ...');
+  const insertAnn = handle.prepare(`
+    INSERT INTO announcements (title, body, priority, scope, pinned, publish_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  const announcements = [
+    {
+      title: '8/13 19:00 番禺广场集合',
+      body: '全体队员 8 月 13 日晚 19:00 在番禺广场地铁 A 出口集合\n请准时到达，携带护照 + 身份证 + 装备清单',
+      priority: 'high',
+      scope: 'public',
+      pinned: 1
+    },
+    {
+      title: 'G7831 票已统一出票',
+      body: '北京北 → 太子城 8/14 07:29\n6 人车票已由 admin 统一领取',
+      priority: 'mid',
+      scope: 'public',
+      pinned: 0
+    },
+    {
+      title: '赛事规则更新：障碍 #14 调整',
+      body: '组委会最新通知，#14 障碍高度降低 0.5m，新手友好。',
+      priority: 'low',
+      scope: 'public',
+      pinned: 0
+    }
+  ];
+  for (const a of announcements) {
+    insertAnn.run(a.title, a.body, a.priority, a.scope, a.pinned, ts, 'a1');
+  }
+} else {
+  console.log('[seed] announcements already exist, skip.');
+}
+
 console.log('[seed] done.');
 db.close();

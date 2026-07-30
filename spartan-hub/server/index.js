@@ -62,7 +62,39 @@ app.use('/api/v1/weather', weatherRoutes);
 app.use('/api/v1/expense-items', expenseItems);
 app.use('/api/v1/splits', splits);
 
-// 静态文件服务
+// ====== 辅助路由（在主路由表外，文档中声明的端点）======
+
+// 团队装备就位率
+app.get('/api/v1/gear/progress', require('./middleware/auth').requireAdmin, (_req, res) => {
+  const handle = db.get();
+  const total = handle.prepare(`
+    SELECT COUNT(*) AS c FROM gear_status
+  `).get().c;
+  const confirmed = handle.prepare(`
+    SELECT COUNT(*) AS c FROM gear_status WHERE status = 1
+  `).get().c;
+  const memberIds = handle.prepare(`
+    SELECT COUNT(DISTINCT member_id) AS c FROM gear_status
+  `).get().c;
+  res.json({
+    total,
+    confirmed,
+    rate: total > 0 ? Math.round(confirmed / total * 100) : 0,
+    memberCount: memberIds
+  });
+});
+
+// 审计日志
+app.get('/api/v1/admin/audit', require('./middleware/auth').requireAdmin, (_req, res) => {
+  const handle = db.get();
+  const rows = handle.prepare(`
+    SELECT id, actor_id AS actorId, action, target, before, after, ip, created_at AS createdAt
+    FROM audit_log ORDER BY id DESC LIMIT 100
+  `).all();
+  res.json({ logs: rows });
+});
+
+// ====== 静态文件 ======
 const STATIC_DIR = path.join(__dirname, '..');
 app.use(express.static(STATIC_DIR));
 
