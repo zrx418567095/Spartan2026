@@ -93,6 +93,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   letter-spacing: 5px; color: var(--white);
 }
 .nav-links { display: flex; list-style: none; gap: 4px; }
+#navMobileLinks { display: flex; flex-direction: column; gap: 0; }
 .nav-links a {
   display: block; padding: 18px 12px;
   color: var(--muted); font-size: 0.7rem; font-weight: 500;
@@ -107,17 +108,29 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   color: var(--white); font-size: 1rem; padding: 8px 12px;
 }
 .nav-mobile {
-  display: none; position: fixed; inset: 0; z-index: 998;
-  background: rgba(11, 11, 11, 0.98); padding: 100px 24px 40px;
+  display: none; position: fixed; inset: 0; z-index: 1500;
+  background: rgba(11, 11, 11, 0.98); padding: 80px 24px 40px;
   overflow-y: auto;
 }
 .nav-mobile.open { display: block; }
+.nav-mobile #navMobileLinks { list-style: none; padding: 0; margin: 0; }
+.nav-mobile #navMobileLinks li { border-bottom: 1px solid var(--border); }
 .nav-mobile a {
   display: flex; align-items: center; gap: 12px;
-  padding: 16px 0; color: var(--white); font-size: 0.95rem;
-  letter-spacing: 1px; border-bottom: 1px solid var(--border);
+  padding: 18px 4px; color: var(--white); font-size: 1.05rem;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  font-family: var(--display);
+  border-bottom: none;
 }
 .nav-mobile a:hover { color: var(--purple-glow); }
+.nav-mobile a.active { color: var(--purple-glow); }
+/* 关闭按钮固定在右上角 */
+.nav-mobile .nav-close {
+  position: absolute; top: 16px; right: 16px;
+  background: transparent; border: 1px solid var(--border-light);
+  color: var(--white); padding: 10px 14px; font-size: 1.2rem;
+  cursor: pointer;
+}
 
 /* ===== Hero ===== */
 .hero {
@@ -759,7 +772,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   .obstacle-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 720px) {
-  .nav-links { display: none; }
+  #navLinks { display: none; }
+  #navMobileLinks { display: flex; }
   .nav-hamburger { display: block; }
   .hero-stats { grid-template-columns: repeat(2, 1fr); }
   .grid-3, .grid-4, .grid-2 { grid-template-columns: 1fr; }

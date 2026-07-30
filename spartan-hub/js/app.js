@@ -1305,32 +1305,43 @@
   function bindNavToggle() {
     const btn = document.getElementById('navHamburger');
     const mobile = document.getElementById('navMobile');
+    const closeBtn = document.getElementById('navMobileClose');
     if (!btn || !mobile) {
       console.warn('[nav] hamburger 或 mobile 元素缺失');
       return;
     }
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      mobile.classList.toggle('open');
-      const expanded = mobile.classList.contains('open');
-      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      // 切换图标
+    const setOpen = (open) => {
+      mobile.classList.toggle('open', open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
       const icon = btn.querySelector('i');
       if (icon) {
-        icon.classList.toggle('fa-bars', !expanded);
-        icon.classList.toggle('fa-xmark', expanded);
+        icon.classList.toggle('fa-bars', !open);
+        icon.classList.toggle('fa-xmark', open);
       }
+      // 打开时禁止 body 滚动
+      document.body.style.overflow = open ? 'hidden' : '';
+    };
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      setOpen(!mobile.classList.contains('open'));
     });
+    // mobile 内的关闭按钮
+    if (closeBtn) {
+      closeBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        setOpen(false);
+      });
+    }
     // 点击导航外部区域关闭
     document.addEventListener('click', e => {
       if (!mobile.classList.contains('open')) return;
       if (e.target.closest('#navMobile') || e.target.closest('#navHamburger')) return;
-      mobile.classList.remove('open');
-      btn.setAttribute('aria-expanded', 'false');
-      const icon = btn.querySelector('i');
-      if (icon) {
-        icon.classList.add('fa-bars');
-        icon.classList.remove('fa-xmark');
+      setOpen(false);
+    });
+    // ESC 关闭
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && mobile.classList.contains('open')) {
+        setOpen(false);
       }
     });
   }
