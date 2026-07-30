@@ -160,6 +160,14 @@
   function closeMobileNav() {
     const m = document.getElementById('navMobile');
     if (m) m.classList.remove('open');
+    // 同步关闭按钮状态与 no-scroll
+    const btn = document.getElementById('navHamburger');
+    if (btn) {
+      btn.classList.remove('is-open');
+      btn.setAttribute('aria-expanded', 'false');
+    }
+    document.body.classList.remove('no-scroll');
+    if (m) m.setAttribute('aria-hidden', 'true');
   }
 
   // ============== 页面渲染 ==============
