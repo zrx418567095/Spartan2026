@@ -31,13 +31,15 @@
       <i class="fa-solid fa-xmark"></i>
     </button>
   </div>
-  <div class="nav-mobile" id="navMobile">
-    <button class="nav-close" id="navMobileClose" aria-label="关闭菜单">
-      <i class="fa-solid fa-xmark"></i>
-    </button>
-    <ul class="nav-links" id="navMobileLinks"></ul>
-  </div>
 </nav>
+
+<!-- 移动端菜单：作为 body 直接子元素，避开 nav 的 stacking context -->
+<div class="nav-mobile" id="navMobile" aria-hidden="true">
+  <button class="nav-close" id="navMobileClose" aria-label="关闭菜单">
+    <i class="fa-solid fa-xmark"></i>
+  </button>
+  <ul class="nav-links" id="navMobileLinks"></ul>
+</div>
 
 <main id="main"></main>
 
