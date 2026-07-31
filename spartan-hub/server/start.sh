@@ -8,7 +8,7 @@
 #   bash ./start.sh status         # 查看运行状态
 #   bash ./start.sh logs           # tail -f 日志
 #   bash ./start.sh foreground     # 前台运行（Ctrl+C 退出）
-#   bash ./start.sh reset          # 删表重建 + 重新 seed（开发用）
+#   bash ./start.sh reset --force  # 删表重建 + 重新 seed（需 --force + 二次确认）
 #
 # 设计要点：
 #   - 写 PID 到 .server.pid，便于 stop/restart
@@ -192,13 +192,36 @@ cmd_foreground() {
 }
 
 cmd_reset() {
+  # 安全护栏：必须显式传 --force 才会进入 reset 流程
+  if [ "${1:-}" != "--force" ]; then
+    echo "ERROR: 重置数据库需要 --force 标志"
+    echo "用法: $0 reset --force"
+    echo ""
+    echo "⚠️  这将永久删除所有数据：成员 / 公告 / 费用 / 分摊 / 任务 / 装备 / 审计日志"
+    echo "⚠️  不会删除 SQLite 数据库文件本身，但会重建并重新灌种子"
+    echo "⚠️  生产环境慎用！建议先备份：cp data/spartan.db data/spartan.db.bak"
+    return 1
+  fi
+
   cmd_stop || true
-  echo "WARN: 即将删除数据库 $DATA_DIR/spartan.db"
-  read -p "确认重置？(yes/no) " ans
-  if [ "$ans" != "yes" ]; then
+
+  echo ""
+  echo "═══════════════════════════════════════════════════════════"
+  echo "  WARN: 即将重置数据库 $DATA_DIR/spartan.db"
+  echo "  WARN: 所有用户数据将被清空（保留 schema，重灌种子）"
+  echo "═══════════════════════════════════════════════════════════"
+  echo ""
+
+  # 二次确认：必须输入 DELETE 全大写
+  read -p "Type 'DELETE' in UPPERCASE to confirm: " ans
+  if [ "$ans" != "DELETE" ]; then
     echo "已取消"
     return 1
   fi
+
+  # 等待 service 完全退出 + 文件句柄释放（避免 EBUSY）
+  sleep 1
+
   node scripts/reset.js
   echo "OK: reset done"
 }
@@ -217,6 +240,7 @@ case "$ACTION" in
   reset)        cmd_reset "$@" ;;
   *)
     echo "用法: $0 {start|stop|restart|status|logs|foreground|reset}" >&2
+    echo "      $0 reset --force    （数据库重置，需 --force + 二次确认）" >&2
     exit 1
     ;;
 esac

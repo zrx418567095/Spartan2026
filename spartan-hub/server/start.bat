@@ -32,7 +32,7 @@ echo   restart   Restart server
 echo   status    Check status
 echo   logs      View logs
 echo   fg        Run in foreground
-echo   reset     Reset database
+echo   reset     Reset database (WARNING: deletes data, requires typing DELETE)
 exit /b 0
 
 :start
@@ -79,11 +79,27 @@ node index.js
 exit /b 0
 
 :reset
-set /p c=Reset database? (y/N):
-if /i "%c%"=="y" (
-    del /f database.sqlite >nul 2>&1
-    del /f database.sqlite-journal >nul 2>&1
-    echo Database reset
+echo ============================================================
+echo   WARN: 即将删除数据库 data\spartan.db
+echo   WARN: 所有用户数据将被清空（保留 schema，重灌种子）
+echo ============================================================
+echo.
+set /p c=Type DELETE in UPPERCASE to confirm:
+if /i "%c%"=="DELETE" (
+    if exist data\spartan.db del /f data\spartan.db >nul 2>&1
+    if exist data\spartan.db-wal del /f data\spartan.db-wal >nul 2>&1
+    if exist data\spartan.db-shm del /f data\spartan.db-shm >nul 2>&1
+    call node scripts\init.js
+    if errorlevel 1 (
+        echo [ERROR] init.js failed
+        exit /b 1
+    )
+    call node scripts\seed.js
+    if errorlevel 1 (
+        echo [ERROR] seed.js failed
+        exit /b 1
+    )
+    echo Database reset done.
 ) else (
     echo Cancelled
 )
