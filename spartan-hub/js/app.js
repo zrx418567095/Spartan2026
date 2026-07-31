@@ -26,15 +26,19 @@
   })();
 
   // 从后端拉取数据填入内存（启动 / 渲染前调用）
-  // 不抛错：失败时静默降级（用初始种子数据，仍可浏览）
+  // 修复 v0.3.1：不破坏性清空；失败保留旧数据并标记错误
   async function refreshFromBackend() {
     if (!state.user) return;
+    let errorCount = 0;
+    const lastErrors = [];
+
     try {
       // 1. 成员
       const m = await apiCall('GET', '/members');
-      SPARTAN_HUB.users = {};
+      // 修复：合并而非原地清空。构建新对象后整体替换，失败则保留旧值
+      const next = {};
       for (const x of (m.members || [])) {
-        SPARTAN_HUB.users[x.username] = {
+        next[x.username] = {
           id: x.id,
           name: x.display,
           display: x.display,
@@ -43,7 +47,12 @@
           username: x.username
         };
       }
-    } catch (e) { console.warn('[refresh] members:', e.message); }
+      SPARTAN_HUB.users = next;
+    } catch (e) {
+      errorCount++;
+      lastErrors.push('成员: ' + e.message);
+      console.warn('[refresh] members:', e.message);
+    }
 
     try {
       // 2. 公告
@@ -57,10 +66,14 @@
         scope: x.scope,
         pinned: x.pinned
       }));
-    } catch (e) { console.warn('[refresh] announcements:', e.message); }
+    } catch (e) {
+      errorCount++;
+      lastErrors.push('公告: ' + e.message);
+      console.warn('[refresh] announcements:', e.message);
+    }
 
     try {
-      // 3. 费用大项 + 分摊
+      // 3. 费用大项
       const it = await apiCall('GET', '/expense-items');
       SPARTAN_HUB.expenseItems = (it.items || []).map(x => ({
         id: String(x.id),
@@ -72,16 +85,16 @@
         note: x.note || '',
         createdBy: x.createdBy
       }));
-      // 分摊：每个大项 GET /expense-items/:id/splits（管理员才能用，成员走 /splits）
-      SPARTAN_HUB.expenseSplits = [];
+
+      // 4. 分摊（关键：失败不破坏性清空）
       const member = SPARTAN_HUB.users[state.user];
+      const newSplits = [];
+      let splitsError = null;
       if (member && member.role === 'member') {
-        // 成员只拉自己的
         try {
           const my = await apiCall('GET', `/members/${member.id}/summary`);
-          // 从 splits 拼回完整 split 对象（含 itemId）
           for (const s of (my.splits || [])) {
-            SPARTAN_HUB.expenseSplits.push({
+            newSplits.push({
               id: String(s.id),
               itemId: String(s.itemId),
               memberId: s.memberId,
@@ -89,14 +102,15 @@
               paidStatus: s.paidStatus
             });
           }
-        } catch (e) { console.warn('[refresh] my-splits:', e.message); }
+        } catch (e) {
+          splitsError = e.message;
+        }
       } else if (member && member.role === 'admin') {
-        // 管理员：拉所有大项的分摊
         for (const item of SPARTAN_HUB.expenseItems) {
           try {
             const sp = await apiCall('GET', `/expense-items/${item.id}/splits`);
             for (const s of (sp.splits || [])) {
-              SPARTAN_HUB.expenseSplits.push({
+              newSplits.push({
                 id: String(s.id),
                 itemId: String(s.itemId),
                 memberId: s.memberId,
@@ -106,11 +120,26 @@
             }
           } catch (_) { /* 单个大项失败不阻塞 */ }
         }
+      } else {
+        splitsError = '当前用户未识别为成员或管理员';
       }
-    } catch (e) { console.warn('[refresh] expense:', e.message); }
+      if (newSplits.length > 0 || !splitsError) {
+        // 拉到了新数据或没出错 → 用新数据
+        SPARTAN_HUB.expenseSplits = newSplits;
+      } else {
+        // 拉新数据失败 → 保留旧 splits（避免误清空显示 0 笔）
+        errorCount++;
+        lastErrors.push('费用分摊: ' + splitsError);
+        console.warn('[refresh] splits:', splitsError);
+      }
+    } catch (e) {
+      errorCount++;
+      lastErrors.push('费用大项: ' + e.message);
+      console.warn('[refresh] expense:', e.message);
+    }
 
     try {
-      // 4. 任务
+      // 5. 任务
       const member = SPARTAN_HUB.users[state.user];
       if (member) {
         const t = await apiCall('GET', `/members/${member.id}/tasks`);
@@ -121,10 +150,14 @@
           note: x.note
         }));
       }
-    } catch (e) { console.warn('[refresh] tasks:', e.message); }
+    } catch (e) {
+      errorCount++;
+      lastErrors.push('任务: ' + e.message);
+      console.warn('[refresh] tasks:', e.message);
+    }
 
     try {
-      // 5. 物资
+      // 6. 物资
       const member = SPARTAN_HUB.users[state.user];
       if (member) {
         const g = await apiCall('GET', `/members/${member.id}/gear`);
@@ -134,7 +167,15 @@
         }
         SPARTAN_HUB.gearStatusByUser[member.id] = map;
       }
-    } catch (e) { console.warn('[refresh] gear:', e.message); }
+    } catch (e) {
+      errorCount++;
+      lastErrors.push('物资: ' + e.message);
+      console.warn('[refresh] gear:', e.message);
+    }
+
+    // 暴露给 UI 用于显示"数据未拉取"警告
+    SPARTAN_HUB._refreshErrorCount = errorCount;
+    SPARTAN_HUB._refreshErrors = lastErrors;
   }
 
   // ====== 后端 API 调用（带 fallback） ======
@@ -719,6 +760,19 @@
     const tasksDone = tasks.filter(t => t.done).length;
     const upcomingTask = tasks.find(t => !t.done);
 
+    // 修复：若 refreshFromBackend 失败，显示警告条
+    const refreshErrs = SPARTAN_HUB._refreshErrors || [];
+    const refreshErrCount = SPARTAN_HUB._refreshErrorCount || 0;
+    const dataWarning = refreshErrCount > 0 ? `
+      <div class="data-warning" style="background:rgba(255,170,0,.12);border:1px solid #fa0;padding:12px 16px;margin-bottom:16px;border-radius:4px;">
+        <strong style="color:#fa0;">⚠️ 部分数据未从服务端同步（${refreshErrCount} 项）</strong>
+        <ul style="margin:8px 0 0 20px;color:var(--muted);font-size:.85rem;">
+          ${refreshErrs.map(e => `<li>${e}</li>`).join('')}
+        </ul>
+        <button class="btn-mini" onclick="location.reload()" style="margin-top:8px;">重新加载</button>
+      </div>
+    ` : '';
+
     // 管理员视图需要团队汇总
     const team = Summary.summarizeTeam(SPARTAN_HUB.expenseItems, SPARTAN_HUB.expenseSplits);
     const memberSummaries = Object.entries(SPARTAN_HUB.users)
@@ -754,6 +808,7 @@
           </div>
 
           <h3 style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px;margin:24px 0 12px;color:var(--white);">我的费用分摊</h3>
+          ${dataWarning}
           ${mySplits.length === 0 ? '<div class="note">当前没有被分摊的费用。</div>' : `
           <div class="tbl-wrap">
             <table class="tbl">
