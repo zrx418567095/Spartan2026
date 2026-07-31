@@ -480,10 +480,10 @@ curl -I https://spartanultra.allenboard.cn/healthz
 # 公共接口
 curl -s https://spartanultra.allenboard.cn/api/v1/public/event | head
 
-# 登录接口（应返回 401 with 正确 username 时）
+# 登录接口（应返回 200 with 正确 username 时）
 curl -s -i -X POST https://spartanultra.allenboard.cn/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"zhangyi"}'
+  -d '{"username":"allen"}'
 ```
 
 ### 6.8 不需要的步骤

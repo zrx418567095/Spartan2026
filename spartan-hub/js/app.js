@@ -398,11 +398,11 @@
           <div class="sec-line"></div>
           <p class="sec-desc">原型阶段只需输入账号名（全拼，小写），不构成真实安全认证。</p>
           <form class="login-form" id="loginForm">
-            <input id="loginInput" type="text" placeholder="试试 chener / xuwei / admin" autocomplete="username" required>
+            <input id="loginInput" type="text" placeholder="试试 kongxiangliang / allen / admin" autocomplete="username" required>
             <button type="submit">进入工作台</button>
           </form>
           <div class="login-error" id="loginError" role="status"></div>
-          <div class="login-hint">演示账号：chener · zhangyi · panbin · xuwei · xuxiaoyong · zhousong · admin</div>
+          <div class="login-hint">演示账号：kongxiangliang · allen · cenzihao · lishuang · zhuqicong · wuhuarong · admin</div>
         </div>
       </section>
     `;

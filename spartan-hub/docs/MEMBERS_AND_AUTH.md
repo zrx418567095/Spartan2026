@@ -11,21 +11,21 @@
 
 ---
 
-## 1. 成员名单（首版种子）
+## 1. 成员名单（2026-07-31 19:16 导出版本）
 
-| 业务 ID | 姓名 | 全拼（username） | 角色 | 备注 |
+| 业务 ID | 姓名 | 全拼（username） | 组别 | 角色 |
 |---|---|---|---|---|
-| m1 | 张一 | zhangyi   | member | |
-| m2 | 陈二 | chener   | member | |
-| m3 | 王三 | wangsan  | member | |
-| m4 | 李四 | lisi     | member | |
-| m5 | 赵五 | zhaowu   | member | |
-| m6 | 孙六 | sunliu   | member | |
-| a1 | 管理员 | admin  | admin  | 团队组织方 |
+| m1 | 孔祥亮 | kongxiangliang | 钟村组 | member |
+| m2 | allen  | allen           | admin   | member |
+| m3 | 岑子豪 | cenzihao        | 市桥组 | member |
+| m4 | 黎双   | lishuang        | 四川组 | member |
+| m5 | 朱启聪 | zhuqicong       | 沙湾组 | member |
+| m6 | 吴华荣 | wuhuarong       | 南村组 | member |
+| a1 | 管理员 | admin           | 组织方 | admin |
 
-> 全拼规则：复姓连写（`ouyangfei` / `liyunlong`），多音字用最常用音。种子脚本会按上表生成。
-
-> 后续若有人姓名无法拼音化（如外籍成员），再加 `members.username` 别名映射表，当前不预留。
+> 数据来源：`J:\kimi-test\members_202607311916.csv`
+> 注：m2 (allen) 在 CSV 中 `group_name='admin'` / `role='member'`，保持原样（按用户确认）。
+> 种子脚本 `server/scripts/seed.js` 按上表生成。
 
 ---
 
@@ -257,17 +257,19 @@ CREATE INDEX idx_payment_member  ON payments(member_id, paid_at);
 
 ## 7. 种子账号对照表
 
-| 业务 ID | 全拼（登录用） | 显示名 |
-|---|---|---|
-| m1 | `zhangyi`  | 张一 |
-| m2 | `chener`   | 陈二 |
-| m3 | `wangsan`  | 王三 |
-| m4 | `lisi`     | 李四 |
-| m5 | `zhaowu`   | 赵五 |
-| m6 | `sunliu`   | 孙六 |
-| a1 | `admin`    | 管理员（组织方） |
+| 业务 ID | 全拼（登录用） | 显示名 | 组别 |
+|---|---|---|---|
+| m1 | `kongxiangliang` | 孔祥亮 | 钟村组 |
+| m2 | `allen`           | allen   | admin  |
+| m3 | `cenzihao`        | 岑子豪 | 市桥组 |
+| m4 | `lishuang`        | 黎双   | 四川组 |
+| m5 | `zhuqicong`       | 朱启聪 | 沙湾组 |
+| m6 | `wuhuarong`       | 吴华荣 | 南村组 |
+| a1 | `admin`           | 管理员 | 组织方 |
 
-种子脚本 `server/scripts/seed.js` 输出以上 7 行，并写一条 admin 公告"欢迎使用本平台"。
+种子脚本 `server/scripts/seed.js` 输出以上 7 行，并写 3 条公告（番禺广场集合 / 高铁票 / 障碍调整）。
+
+> **smoke 测试账号**：默认用 `allen` (m2) 做成员身份测试；管理员用 `admin` (a1)。
 
 ---
 

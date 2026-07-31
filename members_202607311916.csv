@@ -1,0 +1,8 @@
+"id","username","display","group_name","role","created_at","updated_at","archived_at"
+m1,kongxiangliang,孔祥亮,钟村组,member,1785489276,1785489276,
+m2,allen,allen,admin,member,1785489276,1785489276,
+m3,cenzihao,岑子豪,市桥组,member,1785489276,1785489276,
+m4,lishuang,黎双,四川组,member,1785489276,1785489276,
+m5,zhuqicong,朱启聪,沙湾组,member,1785489276,1785489276,
+m6,wuhuarong,吴华荣,南村组,member,1785489276,1785489276,
+a1,admin,管理员,组织方,admin,1785489276,1785489276,

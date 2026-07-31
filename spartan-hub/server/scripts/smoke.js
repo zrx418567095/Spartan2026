@@ -91,9 +91,10 @@ async function run() {
   ok('GET /me as admin', r.status === 200 && meAdmin.user.role === 'admin');
 
   // ====== 登录成员 ======
-  const chener = await login('chener');
-  ok('chener login', chener.status === 200 && chener.user.id === 'm1' && chener.token);
-  const MEMBER = chener.token;
+  // 来源：CSV members_202607311916.csv — m2 = allen（用户本人账号）
+  const member = await login('allen');
+  ok('allen login (m2)', member.status === 200 && member.user.id === 'm2' && member.token);
+  const MEMBER = member.token;
 
   r = await call('GET', '/api/v1/members', { token: MEMBER });
   const mlist = await r.json();
@@ -101,25 +102,25 @@ async function run() {
 
   // ====== 个人分摊 ======
   console.log('\n【成员分摊】');
-  r = await call('GET', '/api/v1/members/m1/summary', { token: MEMBER });
-  const ms = await r.json();
-  ok('GET /members/m1/summary', r.status === 200 && ms.summary.totalCents === 98900);
-
   r = await call('GET', '/api/v1/members/m2/summary', { token: MEMBER });
-  ok('GET other member summary -> 403', r.status === 403);
+  const ms = await r.json();
+  ok('GET /members/m2/summary', r.status === 200 && ms.summary.totalCents === 98900);
 
-  r = await call('GET', '/api/v1/members/m2/summary', { token: ADMIN });
+  r = await call('GET', '/api/v1/members/m1/summary', { token: MEMBER });
+  ok('GET other member summary (m2→m1) -> 403', r.status === 403);
+
+  r = await call('GET', '/api/v1/members/m1/summary', { token: ADMIN });
   ok('GET other member summary as admin', r.status === 200);
 
   // ====== 标记已付 ======
   console.log('\n【标记已付】');
-  r = await call('GET', '/api/v1/members/m1/summary', { token: MEMBER });
+  r = await call('GET', '/api/v1/members/m2/summary', { token: MEMBER });
   const msBefore = await r.json();
   const splitToPay = msBefore.splits.find(s => s.paidStatus === 'unpaid');
   if (splitToPay) {
     r = await call('POST', `/api/v1/splits/${splitToPay.id}/mark-paid`, { token: MEMBER });
     ok(`POST /splits/${splitToPay.id}/mark-paid (member)`, r.status === 200);
-    r = await call('GET', '/api/v1/members/m1/summary', { token: MEMBER });
+    r = await call('GET', '/api/v1/members/m2/summary', { token: MEMBER });
     const msAfter = await r.json();
     ok('paidCents increased after mark-paid',
        msAfter.summary.paidCents === msBefore.summary.paidCents + splitToPay.amountCents);
@@ -129,10 +130,10 @@ async function run() {
 
   // ====== 任务 CRUD ======
   console.log('\n【任务 CRUD】');
-  r = await call('GET', '/api/v1/members/m1/tasks', { token: MEMBER });
-  ok('GET /members/m1/tasks', r.status === 200);
+  r = await call('GET', '/api/v1/members/m2/tasks', { token: MEMBER });
+  ok('GET /members/m2/tasks', r.status === 200);
 
-  r = await call('POST', '/api/v1/members/m1/tasks', { token: MEMBER, body: { title: 'smoke-test task' } });
+  r = await call('POST', '/api/v1/members/m2/tasks', { token: MEMBER, body: { title: 'smoke-test task' } });
   ok('POST create task', r.status === 201);
   const newTask = await r.json();
 
@@ -144,10 +145,10 @@ async function run() {
 
   // ====== 装备读写 ======
   console.log('\n【装备】');
-  r = await call('GET', '/api/v1/members/m1/gear', { token: MEMBER });
-  ok('GET /members/m1/gear', r.status === 200);
+  r = await call('GET', '/api/v1/members/m2/gear', { token: MEMBER });
+  ok('GET /members/m2/gear', r.status === 200);
 
-  r = await call('PUT', '/api/v1/members/m1/gear', {
+  r = await call('PUT', '/api/v1/members/m2/gear', {
     token: MEMBER,
     body: { items: [{ itemName: '水袋背包 2L', level: 'mandatory', status: 1 }] }
   });

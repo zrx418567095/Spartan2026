@@ -2,6 +2,8 @@
 // 种子数据：6 名成员 + 1 名管理员 + 样例大项与分摊
 // 幂等：使用 INSERT OR IGNORE / 不存在才插入
 // 用法：npm run db:seed 或 node scripts/seed.js
+//
+// 成员数据来源：J:\kimi-test\members_202607311916.csv（2026-07-31 19:16 导出版本）
 
 require('dotenv').config();
 const path = require('node:path');
@@ -16,14 +18,16 @@ const insertMember = handle.prepare(`
   INSERT OR IGNORE INTO members (id, username, display, group_name, role, created_at, updated_at)
   VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
+// 来源：CSV `members_202607311916.csv`
+// 注：m2 (allen) 在 CSV 中 group_name='admin' / role='member'，按用户确认保持原样
 const members = [
-  ['m1', 'chener',     '陈尔',   '广州组', 'member'],
-  ['m2', 'zhangyi',    '张毅',   '广州组', 'member'],
-  ['m3', 'panbin',     '潘斌',   '广州组', 'member'],
-  ['m4', 'xuwei',      '徐伟',   '广州组', 'member'],
-  ['m5', 'xuxiaoyong', '徐晓勇', '广州组', 'member'],
-  ['m6', 'zhousong',   '周松',   '广州组', 'member'],
-  ['a1', 'admin',      '管理员', '组织方', 'admin']
+  ['m1', 'kongxiangliang', '孔祥亮', '钟村组', 'member'],
+  ['m2', 'allen',          'allen',   'admin',   'member'],
+  ['m3', 'cenzihao',       '岑子豪', '市桥组', 'member'],
+  ['m4', 'lishuang',       '黎双',   '四川组', 'member'],
+  ['m5', 'zhuqicong',      '朱启聪', '沙湾组', 'member'],
+  ['m6', 'wuhuarong',      '吴华荣', '南村组', 'member'],
+  ['a1', 'admin',          '管理员', '组织方', 'admin']
 ];
 for (const [id, username, display, group, role] of members) {
   insertMember.run(id, username, display, group, role, ts, ts);

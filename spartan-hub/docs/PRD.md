@@ -48,18 +48,20 @@ SpartanUltra 是一次超兽赛事（Spartan Ultra）的团队参与项目，团
 | 管理员 | `admin` | 领队/组织方，拥有全部数据读写权限 |
 | 成员 | `member` | 参赛运动员，只能操作自己的数据 |
 
-### 2.2 用户清单
+### 2.2 用户清单（2026-07-31 19:16 导出版本）
 
-| 用户名（全拼，小写） | 姓名 | 角色 |
-|---|---|---|
-| chener | 陈尔 | member |
-| zhangyi | 张毅 | member |
-| panbin | 潘斌 | member |
-| xuwei | 徐伟 | member |
-| xuxiaoyong | 徐晓勇 | member |
-| zhousong | 周松 | member |
-| admin | 管理员 | admin |
+| 业务 ID | 用户名（全拼，小写） | 姓名 | 组别 | 角色 |
+|---|---|---|---|---|
+| m1 | kongxiangliang | 孔祥亮 | 钟村组 | member |
+| m2 | allen | allen | admin | member |
+| m3 | cenzihao | 岑子豪 | 市桥组 | member |
+| m4 | lishuang | 黎双 | 四川组 | member |
+| m5 | zhuqicong | 朱启聪 | 沙湾组 | member |
+| m6 | wuhuarong | 吴华荣 | 南村组 | member |
+| a1 | admin | 管理员 | 组织方 | admin |
 
+> 数据来源：`J:\kimi-test\members_202607311916.csv`
+> 注：m2 (allen) 在 CSV 中 `group_name='admin'` / `role='member'`，保持原样。
 > 用户名即姓名全拼（小写），仅作存在性校验，无需密码。
 
 ---
@@ -142,7 +144,7 @@ SpartanUltra 是一次超兽赛事（Spartan Ultra）的团队参与项目，团
 #### 4.2.1 登录（v0.3）
 
 - **方式**：输入姓名全拼（小写），仅校验用户存在性，无密码
-- **示例**：`chener` / `zhangyi`
+- **示例**：`kongxiangliang` / `allen` / `admin`
 - **会话**：JWT Token，存于 HttpOnly Cookie，有效期 8 小时
 - **前端**：调 `POST /api/v1/auth/login`（不读内存校验），失败 alert
 - **启动校验**：`GET /api/v1/auth/me` 验证 token，过期/撤销自动清登录态

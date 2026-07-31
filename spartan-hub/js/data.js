@@ -273,13 +273,15 @@ window.SPARTAN_HUB = {
   ],
 
   users: {
-    chener:      { id: 'm1', name: '陈尔',   role: 'member', group: '广州组' },
-    zhangyi:     { id: 'm2', name: '张毅',   role: 'member', group: '广州组' },
-    panbin:      { id: 'm3', name: '潘斌',   role: 'member', group: '广州组' },
-    xuwei:       { id: 'm4', name: '徐伟',   role: 'member', group: '广州组' },
-    xuxiaoyong:  { id: 'm5', name: '徐晓勇', role: 'member', group: '广州组' },
-    zhousong:    { id: 'm6', name: '周松',   role: 'member', group: '广州组' },
-    admin:       { id: 'a1', name: '管理员', role: 'admin',  group: '组织方' }
+    // 来源：server/scripts/seed.js（同 CSV `members_202607311916.csv`）
+    // 注：m2 (allen) 在 CSV 中 group_name='admin' / role='member'，保持原样
+    kongxiangliang: { id: 'm1', name: '孔祥亮', role: 'member', group: '钟村组' },
+    allen:          { id: 'm2', name: 'allen',   role: 'member', group: 'admin'   },
+    cenzihao:       { id: 'm3', name: '岑子豪', role: 'member', group: '市桥组' },
+    lishuang:       { id: 'm4', name: '黎双',   role: 'member', group: '四川组' },
+    zhuqicong:      { id: 'm5', name: '朱启聪', role: 'member', group: '沙湾组' },
+    wuhuarong:      { id: 'm6', name: '吴华荣', role: 'member', group: '南村组' },
+    admin:          { id: 'a1', name: '管理员', role: 'admin',  group: '组织方' }
   },
 
   // 费用大项（管理员录入）—— 模仿 expense_items 表

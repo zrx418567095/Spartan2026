@@ -233,15 +233,16 @@ CREATE INDEX idx_audit_actor  ON audit_log(actor_id, created_at);
 ## 4. 种子数据示例
 
 ```sql
--- 6 名成员 + 1 个管理员
+-- 6 名成员 + 1 个管理员（来源：J:\kimi-test\members_202607311916.csv）
+-- 注：m2 (allen) 在 CSV 中 group_name='admin' / role='member'，保持原样
 INSERT INTO members (id, username, display, group_name, role, created_at, updated_at) VALUES
-  ('m1', 'chener',      '陈尔',   '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('m2', 'zhangyi',     '张毅',   '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('m3', 'panbin',      '潘斌',   '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('m4', 'xuwei',       '徐伟',   '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('m5', 'xuxiaoyong',  '徐晓勇', '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('m6', 'zhousong',    '周松',   '广州组',  'member', strftime('%s','now'), strftime('%s','now')),
-  ('a1', 'admin',       '管理员', '组织方',  'admin',  strftime('%s','now'), strftime('%s','now'));
+  ('m1', 'kongxiangliang', '孔祥亮', '钟村组', 'member', strftime('%s','now'), strftime('%s','now')),
+  ('m2', 'allen',          'allen',   'admin',   'member', strftime('%s','now'), strftime('%s','now')),
+  ('m3', 'cenzihao',       '岑子豪', '市桥组', 'member', strftime('%s','now'), strftime('%s','now')),
+  ('m4', 'lishuang',       '黎双',   '四川组', 'member', strftime('%s','now'), strftime('%s','now')),
+  ('m5', 'zhuqicong',      '朱启聪', '沙湾组', 'member', strftime('%s','now'), strftime('%s','now')),
+  ('m6', 'wuhuarong',      '吴华荣', '南村组', 'member', strftime('%s','now'), strftime('%s','now')),
+  ('a1', 'admin',          '管理员', '组织方', 'admin',  strftime('%s','now'), strftime('%s','now'));
 
 -- 大项样例
 INSERT INTO expense_items (title, category, amount_cents, status, note, created_by, created_at, updated_at) VALUES
