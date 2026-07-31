@@ -208,19 +208,20 @@ CREATE INDEX idx_ann_scope ON announcements(scope, target_member_id);
 
 -- ============================================================
 -- audit_log：所有写操作都留痕
--- 关键场景：管理员改费用、成员改装备状态、成员完成任务
--- 第一阶段先不强制写入，应用层主动调用
+-- 关键场景：成员增删改、公告增删改、费用增删改、装备/任务/标记已付
+-- 由应用层主动调用 db.auditLog() helper
+-- v0.3+ 成员 / 公告的写操作强制写入审计
 -- ============================================================
 CREATE TABLE audit_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   actor_id    TEXT NOT NULL,                      -- 谁操作
-  action      TEXT NOT NULL,                      -- 'expense.update' / 'gear.put' ...
-  target      TEXT NOT NULL,                      -- 'expense:32'
-  before      TEXT,                               -- JSON before
-  after       TEXT,                               -- JSON after
-  ip          TEXT,
-  ua          TEXT,
-  created_at  INTEGER NOT NULL
+  action      TEXT NOT NULL,                      -- 'member.create' / 'member.update' / 'member.archive' / 'announcement.create' / ...
+  target      TEXT NOT NULL,                      -- 目标资源 ID（如 'm7'、'ann-32'）
+  before      TEXT,                               -- JSON before（变更前快照，可空）
+  after       TEXT,                               -- JSON after（变更后快照，可空）
+  ip          TEXT,                               -- 客户端 IP（来自 X-Forwarded-For 或 socket）
+  ua          TEXT,                               -- User-Agent
+  created_at  INTEGER NOT NULL                    -- Unix 秒
 );
 
 CREATE INDEX idx_audit_target ON audit_log(target);

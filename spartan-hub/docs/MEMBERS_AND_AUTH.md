@@ -271,7 +271,7 @@ CREATE INDEX idx_payment_member  ON payments(member_id, paid_at);
 
 ---
 
-## 8. 后续要新增账号怎么办？
+## 8. 后续要新增账号怎么办？（v0.3 架构级修复后）
 
 - admin 登录后 → 进入"管理后台" → 点击"成员管理"卡片 → 打开 `admin-members` 视图
 - 点击"+ 新增成员"按钮，填写：
@@ -280,12 +280,23 @@ CREATE INDEX idx_payment_member  ON payments(member_id, paid_at);
   - 组别（可选）
   - 角色（成员/管理员）
 - 提交后：
-  - 前端调 `POST /api/v1/members`（admin-only）→ 服务端插入 `members` 行（`role='member'`、`archived_at=NULL`），写 `audit_log`
-  - 前端同步更新 `SPARTAN_HUB.users` 与 `localStorage`（API 失败时 fallback）
-  - 自动初始化 `tasksByUser[id] = []` 与 `gearStatusByUser[id] = {}`
-- 编辑：点击行内"编辑"按钮 → `PATCH /api/v1/members/:id`
-- 删除：点击行内"删除"按钮（带确认）→ `DELETE /api/v1/members/:id`，**软删除**（保留分摊历史）
+  - 前端调 `POST /api/v1/members`（admin-only）→ 服务端插入 `members` 行（`role='member'`、`archived_at=NULL`），写 `audit_log`（`action='member.create'`）
+  - 服务端成功才更新前端内存；**失败弹 alert，不静默吞错**
+  - 成功后前端调 `refreshFromBackend()` 拉最新数据
+- 编辑：点击行内"编辑"按钮 → `PATCH /api/v1/members/:id`（写 `audit_log` `action='member.update'`，含 before/after）
+- 删除（软删除 + 级联归档）：点击行内"删除"按钮（带确认）→ `DELETE /api/v1/members/:id`
+  - 弹窗文案："确认将成员"XX"标记为归档？"
+  - 提示："· 成员账号将被禁用，任务/装备数据一并归档 · 费用分摊记录保留（便于历史查询）"
+  - 后端行为：
+    1. `UPDATE members SET archived_at = ?, updated_at = ? WHERE id = ?`
+    2. `UPDATE tasks SET archived_at = ?, updated_at = ? WHERE member_id = ? AND archived_at IS NULL`（级联归档任务）
+    3. `UPDATE gear_status SET updated_at = ? WHERE member_id = ?`（标记装备最后变更）
+    4. `expense_splits` 不归档（保留历史审计）
+    5. 写 `audit_log` `action='member.archive'`
+  - 前端收到 200 后调 `refreshFromBackend()`，从服务端拉最新数据
 - **不允许前端自由注册**：所有 `members` 写接口都是 admin-only
+
+> **架构原则（v0.3+）**：后端 SQLite 是唯一真源，前端只缓存登录态。`localStorage` 不再保存任何业务数据（启动时自动清旧缓存）。所有写操作必须经 API，失败一律 alert。
 
 ---
 

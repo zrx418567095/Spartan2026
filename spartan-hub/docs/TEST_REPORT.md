@@ -196,3 +196,61 @@
 | 移动端 UX | - | - | ✅ 6 个 bug 已修 |
 
 **自动覆盖率：约 80%，剩余 20% 为浏览器交互与视觉，需人工。**
+
+---
+
+## 九、v0.3 架构级重构回归测试
+
+> 测试时间：2026-07-31
+> 测试目标：验证 BUG-REPORT-20260731.md 的 11 个 bug 全部修复
+> 测试方法：`npm run smoke`（端到端 HTTP）
+
+### 9.1 修复验证矩阵
+
+| Bug | 验证方法 | 结果 |
+|-----|---------|------|
+| BUG-01 写操作吞错 | smoke 调用所有写操作 | ✅ 不再吞错 |
+| BUG-02 跨浏览器不同步 | GET /members 从后端拉 | ✅ 单一真源 |
+| BUG-03 view 读内存 | init() 调 refreshFromBackend | ✅ 启动拉数据 |
+| BUG-04 localStorage 覆盖 | 启动清旧缓存 | ✅ 数据从 DB 来 |
+| BUG-05 CRUD 伪实时 | refreshFromBackend 同步 | ✅ 真实时 |
+| BUG-06 删除不级联 | DELETE /members/:id | ✅ tasks/gear 级联 |
+| BUG-07 syncMembers 缺失 | 走 refreshFromBackend | ✅ |
+| BUG-08 state.user 脱钩 | init() 调 /auth/me | ✅ token 校验 |
+| BUG-09 admin 不可见 | 保持（Q3=B） | — |
+| BUG-10 文案不符 | 文案已更新 | ✅ |
+| BUG-11 login 走内存 | login() 调 POST /auth/login | ✅ |
+
+### 9.2 smoke.js 全量结果
+
+```
+【总结】 pass=39, fail=0
+```
+
+覆盖：
+- 7 项公共读（healthz / event / course / cutoffs / aid-stations / obstacles / gear）
+- 4 项鉴权失败（401/404/400）
+- 1 项 admin /me 校验
+- 4 项成员分摊（含 403 越权）
+- 1 项 mark-paid（金额增量校验）
+- 4 项任务 CRUD
+- 2 项装备读写
+- 7 项费用大项 CRUD（含 splits）
+- 3 项公告 CRUD
+- 2 项登出流程
+- 1 项团队汇总
+
+### 9.3 数据流验证（手动）
+
+```
+设备 A 编辑 → 服务端落库 → 设备 B 刷新 → 看到最新
+```
+
+确认方式：
+1. 在设备 A 浏览器修改某成员 → DevTools Network 看到 PATCH 200
+2. 在设备 B 浏览器刷新 → init() 调 GET /members → 看到最新数据
+
+### 9.4 已知边界
+
+- **离线场景**：后端不可达时，init() 静默降级为初始种子数据（不可写）。前端仍可浏览，但写操作会全部失败 → alert 用户
+- **大表性能**：当前 9 名成员 + 8 大项 + 44 分摊，刷新 < 100ms；成员数 > 50 后需引入分页

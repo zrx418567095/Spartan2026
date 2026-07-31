@@ -104,15 +104,77 @@
 
 ---
 
+## v0.3 · 2026-07-31 · 架构级根治（方案A）
+
+> 实施 BUG-REPORT-20260731.md 的方案 A：**后端 SQLite 是唯一真源，前端只是视图**
+> 解决所有"跨设备不同步 / 写失败静默吞错"类根本问题
+
+### 修复 11 个 bug
+
+| Bug | 严重度 | 修复 |
+|-----|--------|------|
+| BUG-01 成员写操作静默吞错 | P0 | 写失败 alert；成功才更新本地 |
+| BUG-02 跨浏览器不同步 | P0 | login/init 调后端 API |
+| BUG-03 其他 view 读内存 | P0 | init() 并发拉数据 |
+| BUG-04 localStorage 启动覆盖 | P0 | 删 restoreData 数据部分 + 启动清旧缓存 |
+| BUG-05 CRUD 伪实时 | P1 | 写成功后 refreshFromBackend |
+| BUG-06 删除成员不级联 | P1 | DELETE 加级联归档 tasks/gear |
+| BUG-07 syncMembers 缺失 | P1 | 走 refreshFromBackend |
+| BUG-08 state.user 脱钩 | P2 | init() 调 GET /auth/me 校验 token |
+| BUG-09 admin 不可见 | P2 | 保持（Q3=B） |
+| BUG-10 删除文案不符 | P3 | 改为"标记归档，费用分摊保留" |
+| BUG-11 login 走内存 | P3 | login() 调 POST /auth/login |
+
+### 后端加固
+- DELETE `/api/v1/members/:id` 加级联归档
+  - members → archived_at
+  - tasks → archived_at（级联）
+  - gear_status → updated_at
+  - expense_splits → 保留
+- 新增 `db.auditLog()` helper
+- members POST/PATCH 写 audit_log（含 before/after 快照）
+- members DELETE 写 audit_log（`action='member.archive'`）
+
+### 前端架构改造
+- 删 `persistData/restoreData` 的数据部分（保留登录态）
+- 启动时清掉旧的 `spartan-hub-data` 缓存（一次性迁移）
+- `init()` 改为 async：
+  1. `GET /auth/me` 校验 session
+  2. `refreshFromBackend()` 拉 5 类资源
+  3. render
+- `refreshFromBackend()`：拉成员 / 公告 / 费用大项 / 分摊 / 任务 / 装备
+- `login()/logout()` 调真实 API
+- 所有写操作：catch 后 alert，成功后 refreshFromBackend
+- 删除文案改为"标记归档，费用分摊保留"
+
+### 测试
+- `npm run smoke` → **39/39 全部通过** ✅
+- 新增 smoke 用例：mark-paid 金额增量校验、POST splits 数量校验
+- 修复 1 个 smoke 期望（GET /members 现在含 admin）
+
+### 部署影响
+- 前端：浏览器刷新（自动清 localStorage 旧缓存）
+- 后端：systemctl restart spartan-hub
+- 数据库：schema 无变化，无需迁移
+- 旧 localStorage 缓存：启动时自动清掉，无用户感知
+
+---
+
 ## 同步更新的文档
 
 | 文档 | 主要变更 |
 |------|---------|
-| `docs/ARCHITECTURE.md` | 补全 API 路由表（members 增 POST/PATCH/DELETE；announcements 整组；tasks 增 POST/DELETE；gear 状态说明改为二态） |
-| `docs/MEMBERS_AND_AUTH.md` | §8 新增/编辑/删除成员的流程更新（含 API 路径与软删除） |
-| `docs/db-schema.md` | `gear_status.status` 字典改为二态（0 未确认 / 1 已确认） |
-| `docs/PRD.md` | §4.2.4 物资管理改为二态；§4.3.2 成员管理补充增删改 |
-| `docs/test-cases.md` | 第六章新增 v0.2 增量测试用例（TC-09 ~ TC-19） |
+| `docs/ARCHITECTURE.md` | 加"后端是真源"原则；§3.2.1 写操作审计说明 |
+| `docs/MEMBERS_AND_AUTH.md` | §8 删除语义改为"软删除+级联归档" + 完整流程 |
+| `docs/db-schema.md` | `audit_log` 字段注释更新（action 命名约定） |
+| `docs/PRD.md` | §4.2.1/4.2.4/4.3.2 加 v0.3 标注，反映真源原则 |
+| `docs/TEST_REPORT.md` | §9 v0.3 架构级重构回归测试（39/39 smoke） |
+
+---
+
+## 上一版 v0.2（仅作历史）
+
+### 同步更新的文档
 
 ---
 

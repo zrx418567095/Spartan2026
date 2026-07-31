@@ -42,6 +42,7 @@
 | **姓名全拼登录** | 账号名就是姓名全拼（小写），仅作"我能输入什么"的最小校验；服务端做存在性校验后签发 JWT |
 | **可审计** | Git 单仓管理；`push.sh` 一键同步；不回写任何凭证 |
 | **易于备份** | SQLite 单文件；按天 cron 备份 + 异地 |
+| **后端是真源** | 所有业务数据（成员/公告/费用/任务/装备）以 SQLite 为唯一真源；前端只缓存登录态；写操作必须经 API，失败 alert 用户 |
 
 
 ---
@@ -177,6 +178,14 @@ spartan-hub/
 | GET | `/api/v1/admin/audit` | 审计日志 | **仅 admin** | |
 
 权限矩阵参见 `MEMBERS_AND_AUTH.md` §3。
+
+#### 3.2.1 写操作审计
+
+所有成员 / 公告的写操作都通过 `db.auditLog(actorId, action, target, before, after, req)` 写入 `audit_log` 表。
+GET `/api/v1/admin/audit` 供 admin 查最近 100 条记录。
+
+action 命名约定：
+- `member.create` / `member.update` / `member.archive`
 
 ### 3.3 数据模型（摘要）
 
