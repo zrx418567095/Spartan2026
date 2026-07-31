@@ -68,13 +68,32 @@ EOF
 }
 
 ensure_db() {
+  # 三重防护，防止生产 db 被误删后自动用 seed 覆盖：
+  # 1. 文件存在 → 跳过 init/seed
+  # 2. 文件不存在但生产标记文件 .initialized 存在 → 报警并退出
+  #    （运维需手工备份恢复或显式初始化）
+  # 3. 文件不存在且无 .initialized 标记 → 首次部署，正常 init + seed
   if [ -f "$DATA_DIR/spartan.db" ]; then
     echo "INFO: 数据库已存在，跳过 init/seed"
     return
   fi
+  if [ -f "$DATA_DIR/.initialized" ]; then
+    echo "ERROR: 检测到生产环境标记 .initialized，但 spartan.db 不存在！"
+    echo "       这通常意味着数据文件被误删。出于数据安全考虑，不会自动重建。"
+    echo "       请按以下步骤处理："
+    echo "       1. 立即停止服务：bash start.sh stop"
+    echo "       2. 检查是否有备份：ls -la $DATA_DIR/"
+    echo "       3. 若有备份恢复：cp $DATA_DIR/spartan.db.bak-XXXX $DATA_DIR/spartan.db"
+    echo "       4. 删除 .initialized 后重启：rm $DATA_DIR/.initialized && bash start.sh start"
+    echo "       5. 或确认是全新部署：rm $DATA_DIR/.initialized && bash start.sh start"
+    exit 1
+  fi
   echo "INFO: 首次部署，初始化数据库 ..."
   node scripts/init.js
   node scripts/seed.js
+  # 首次部署成功后写入标记（防止下次误删后自动重建覆盖生产数据）
+  touch "$DATA_DIR/.initialized"
+  echo "INFO: 已写入 .initialized 标记"
 }
 
 ensure_deps() {
