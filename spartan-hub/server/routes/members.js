@@ -36,7 +36,8 @@ router.get('/:id/summary', auth.requireAuth, (req, res) => {
     return res.status(403).json({ error: 'forbidden' });
   }
   const splits = db.get().prepare(`
-    SELECT id, expense_item_id AS itemId, amount_cents AS amountCents, paid_status AS paidStatus, paid_at AS paidAt
+    SELECT id, expense_item_id AS itemId, member_id AS memberId,
+           amount_cents AS amountCents, paid_status AS paidStatus, paid_at AS paidAt
     FROM expense_splits
     WHERE member_id = ? AND archived_at IS NULL
     ORDER BY id
