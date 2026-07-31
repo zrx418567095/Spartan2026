@@ -9,30 +9,132 @@
   const state = { user: null, view: 'home' };
   const STORAGE_KEY = 'spartan-hub-user';
 
-  // 后端未启动，原型数据落地到 localStorage 后能跨刷新保留
-  const DATA_KEY = 'spartan-hub-data';
-  function persistData() {
-    localStorage.setItem(DATA_KEY, JSON.stringify({
-      expenseItems: SPARTAN_HUB.expenseItems,
-      expenseSplits: SPARTAN_HUB.expenseSplits,
-      tasksByUser: SPARTAN_HUB.tasksByUser,
-      gearStatusByUser: SPARTAN_HUB.gearStatusByUser,
-      announcements: SPARTAN_HUB.announcements,
-      users: SPARTAN_HUB.users
-    }));
-  }
-  function restoreData() {
-    const saved = localStorage.getItem(DATA_KEY);
-    if (!saved) return;
+  // 后端 API 调用 + 数据同步（架构级修复 v0.3）
+// 真源原则：后端 SQLite 是唯一真源，前端只读不写（不缓存业务数据到 localStorage）
+// 只保留登录态 localStorage（state.user），保证刷新后能恢复会话
+  const DATA_KEY_LEGACY = 'spartan-hub-data';
+
+  // 清掉旧的 localStorage 数据缓存（一次性迁移）
+  (function clearLegacyDataCache() {
     try {
-      const obj = JSON.parse(saved);
-      if (obj.users) SPARTAN_HUB.users = obj.users;
-      if (obj.expenseItems) SPARTAN_HUB.expenseItems = obj.expenseItems;
-      if (obj.expenseSplits) SPARTAN_HUB.expenseSplits = obj.expenseSplits;
-      if (obj.tasksByUser) SPARTAN_HUB.tasksByUser = obj.tasksByUser;
-      if (obj.gearStatusByUser) SPARTAN_HUB.gearStatusByUser = obj.gearStatusByUser;
-      if (obj.announcements) SPARTAN_HUB.announcements = obj.announcements;
-    } catch (e) { /* ignore */ }
+      const old = localStorage.getItem(DATA_KEY_LEGACY);
+      if (old) {
+        localStorage.removeItem(DATA_KEY_LEGACY);
+        console.info('[init] cleared legacy localStorage data cache (backend is now the source of truth)');
+      }
+    } catch (_) { /* ignore */ }
+  })();
+
+  // 从后端拉取数据填入内存（启动 / 渲染前调用）
+  // 不抛错：失败时静默降级（用初始种子数据，仍可浏览）
+  async function refreshFromBackend() {
+    if (!state.user) return;
+    try {
+      // 1. 成员
+      const m = await apiCall('GET', '/members');
+      SPARTAN_HUB.users = {};
+      for (const x of (m.members || [])) {
+        SPARTAN_HUB.users[x.username] = {
+          id: x.id,
+          name: x.display,
+          display: x.display,
+          role: x.role,
+          group: x.group,
+          username: x.username
+        };
+      }
+    } catch (e) { console.warn('[refresh] members:', e.message); }
+
+    try {
+      // 2. 公告
+      const a = await apiCall('GET', '/announcements');
+      SPARTAN_HUB.announcements = (a.announcements || []).map(x => ({
+        id: x.id,
+        title: x.title,
+        body: x.body || '',
+        priority: x.priority,
+        time: x.time,
+        scope: x.scope,
+        pinned: x.pinned
+      }));
+    } catch (e) { console.warn('[refresh] announcements:', e.message); }
+
+    try {
+      // 3. 费用大项 + 分摊
+      const it = await apiCall('GET', '/expense-items');
+      SPARTAN_HUB.expenseItems = (it.items || []).map(x => ({
+        id: String(x.id),
+        title: x.title,
+        category: x.category,
+        amountCents: x.amountCents,
+        status: x.status,
+        paidAt: x.paidAt,
+        note: x.note || '',
+        createdBy: x.createdBy
+      }));
+      // 分摊：每个大项 GET /expense-items/:id/splits（管理员才能用，成员走 /splits）
+      SPARTAN_HUB.expenseSplits = [];
+      const member = SPARTAN_HUB.users[state.user];
+      if (member && member.role === 'member') {
+        // 成员只拉自己的
+        try {
+          const my = await apiCall('GET', `/members/${member.id}/summary`);
+          // 从 splits 拼回完整 split 对象（含 itemId）
+          for (const s of (my.splits || [])) {
+            SPARTAN_HUB.expenseSplits.push({
+              id: String(s.id),
+              itemId: String(s.itemId),
+              memberId: s.memberId,
+              amountCents: s.amountCents,
+              paidStatus: s.paidStatus
+            });
+          }
+        } catch (e) { console.warn('[refresh] my-splits:', e.message); }
+      } else if (member && member.role === 'admin') {
+        // 管理员：拉所有大项的分摊
+        for (const item of SPARTAN_HUB.expenseItems) {
+          try {
+            const sp = await apiCall('GET', `/expense-items/${item.id}/splits`);
+            for (const s of (sp.splits || [])) {
+              SPARTAN_HUB.expenseSplits.push({
+                id: String(s.id),
+                itemId: String(s.itemId),
+                memberId: s.memberId,
+                amountCents: s.amountCents,
+                paidStatus: s.paidStatus
+              });
+            }
+          } catch (_) { /* 单个大项失败不阻塞 */ }
+        }
+      }
+    } catch (e) { console.warn('[refresh] expense:', e.message); }
+
+    try {
+      // 4. 任务
+      const member = SPARTAN_HUB.users[state.user];
+      if (member) {
+        const t = await apiCall('GET', `/members/${member.id}/tasks`);
+        SPARTAN_HUB.tasksByUser[member.id] = (t.tasks || []).map(x => ({
+          id: String(x.id),
+          title: x.title,
+          done: !!x.done,
+          note: x.note
+        }));
+      }
+    } catch (e) { console.warn('[refresh] tasks:', e.message); }
+
+    try {
+      // 5. 物资
+      const member = SPARTAN_HUB.users[state.user];
+      if (member) {
+        const g = await apiCall('GET', `/members/${member.id}/gear`);
+        const map = {};
+        for (const x of (g.items || [])) {
+          map[x.itemName] = Number(x.status) || 0;
+        }
+        SPARTAN_HUB.gearStatusByUser[member.id] = map;
+      }
+    } catch (e) { console.warn('[refresh] gear:', e.message); }
   }
 
   // ====== 后端 API 调用（带 fallback） ======
@@ -71,16 +173,44 @@
   }
 
   function login(username) {
-    const user = SPARTAN_HUB.users[username];
-    if (!user) return false;
-    state.user = username;
-    persist();
-    return true;
+    // 真实登录：调 POST /api/v1/auth/login，让后端校验用户存在性 + 颁发 JWT
+    return fetch('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ username })
+    }).then(async r => {
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        const msg = err.message || err.error || `登录失败 (HTTP ${r.status})`;
+        throw new Error(msg);
+      }
+      const data = await r.json();
+      // 服务端只返回 user 概要，没有 username（id 是 m1 / a1），从前端查表拿到
+      const userInfo = data.user;
+      state.user = userInfo.username || username;
+      // 同步更新内存用户对象（用后端返回的真实数据）
+      SPARTAN_HUB.users[state.user] = {
+        id: userInfo.id,
+        name: userInfo.display,
+        display: userInfo.display,
+        role: userInfo.role,
+        group: userInfo.group,
+        username: state.user
+      };
+      persist();
+      // 登录成功后立即拉数据
+      await refreshFromBackend();
+      return true;
+    });
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      await apiCall('POST', '/auth/logout');
+    } catch (_) { /* 即使后端失败也要清前端态 */ }
     state.user = null;
-    persist();
+    localStorage.removeItem(STORAGE_KEY);
     render();
   }
 
@@ -142,7 +272,7 @@
       const logoutTarget = event.target.closest('[data-action="logout"]');
       if (logoutTarget) {
         event.preventDefault();
-        logout();
+        logout();  // async 已被 bindDelegatedClicks 包成 fire-and-forget
         closeMobileNav();
       }
       // Hero 中的"立即登录"CTA
@@ -849,7 +979,7 @@
           <div class="sec-tag">Admin · Members</div>
           <h2 class="sec-title">成员管理</h2>
           <div class="sec-line"></div>
-          <p class="sec-desc">管理团队成员账号、姓名、组别。删除成员时其任务和物资数据也将一并移除。</p>
+          <p class="sec-desc">管理团队成员账号、姓名、组别。<br>· 删除成员为软删除：账号归档 + 任务/装备数据归档<br>· 费用分摊记录保留（便于历史查询）</p>
           <div style="margin: 16px 0 24px;">
             <button class="btn btn-primary" id="addMemberBtn">+ 新增成员</button>
           </div>
@@ -922,37 +1052,39 @@
 
       const id = existing ? existing.id : 'm' + (Date.now().toString().slice(-6));
 
+      // 修 BUG-01：失败必须 alert，不静默吞；成功才更新本地
       try {
+        let result;
         if (existing) {
-          // 编辑：调用 PATCH
-          await apiCall('PATCH', `/members/${existing.id}`, {
+          result = await apiCall('PATCH', `/members/${existing.id}`, {
             username: uname, display: name, group: group || '未分组', role
           });
         } else {
-          // 新增：调用 POST
-          await apiCall('POST', `/members`, {
+          result = await apiCall('POST', `/members`, {
             id, username: uname, display: name, group: group || '未分组', role
           });
         }
+        // 用后端返回的真实数据更新本地（架构级：后端是真源）
+        const m = result.member || result;
+        const finalId = m.id || id;
+        SPARTAN_HUB.users[uname] = {
+          id: finalId,
+          name: m.display || name,
+          display: m.display || name,
+          role: m.role || role,
+          group: m.group || group || '未分组',
+          username: uname
+        };
+        if (existing && uname !== username) {
+          delete SPARTAN_HUB.users[username];
+        }
+        if (!SPARTAN_HUB.tasksByUser[finalId]) SPARTAN_HUB.tasksByUser[finalId] = [];
+        if (!SPARTAN_HUB.gearStatusByUser[finalId]) SPARTAN_HUB.gearStatusByUser[finalId] = {};
+        closeMemberModal();
+        render();
       } catch (e) {
-        // 后端失败时退回本地存储（保证可用性）
-        console.warn('[members] api failed, fallback to local:', e.message);
+        alert(`保存失败：${e.message}\n请稍后重试或联系管理员`);
       }
-
-      // 本地同步（无论后端成功与否都更新前端对象）
-      SPARTAN_HUB.users[uname] = { id, name, role, group: group || '未分组', username: uname, display: name };
-      if (existing && uname !== username) {
-        const oldData = SPARTAN_HUB.users[username];
-        delete SPARTAN_HUB.users[username];
-        SPARTAN_HUB.users[uname] = { ...oldData, id, name, group: group || '未分组', role, username: uname, display: name };
-      }
-
-      if (!SPARTAN_HUB.tasksByUser[id]) SPARTAN_HUB.tasksByUser[id] = [];
-      if (!SPARTAN_HUB.gearStatusByUser[id]) SPARTAN_HUB.gearStatusByUser[id] = {};
-
-      persistData();
-      closeMemberModal();
-      render();
     });
   }
 
@@ -974,19 +1106,17 @@
         const uname = btn.getAttribute('data-del-member');
         const u = SPARTAN_HUB.users[uname];
         if (!u) return;
-        if (!confirm(`确认删除成员"${u.name}"？\n\n注意：\n· 费用分摊记录不会被自动删除\n· 成员的任务和物资数据将被移除`)) return;
+        if (!confirm(`确认将成员"${u.name}"标记为归档？\n\n注意：\n· 成员账号将被禁用，任务/装备数据一并归档\n· 费用分摊记录保留（便于历史查询）`)) return;
 
         try {
           await apiCall('DELETE', `/members/${u.id}`);
         } catch (e) {
-          console.warn('[members] delete api failed, fallback to local:', e.message);
+          alert(`归档失败：${e.message}`);
+          return;  // 失败不更新本地
         }
 
-        delete SPARTAN_HUB.users[uname];
-        if (SPARTAN_HUB.tasksByUser[u.id]) delete SPARTAN_HUB.tasksByUser[u.id];
-        if (SPARTAN_HUB.gearStatusByUser[u.id]) delete SPARTAN_HUB.gearStatusByUser[u.id];
-
-        persistData();
+        // 后端成功：从服务端拉最新数据刷新
+        await refreshFromBackend();
         render();
       });
     });
@@ -1114,15 +1244,17 @@
   function bindLogin() {
     const form = $('#loginForm');
     if (!form) return;
-    form.addEventListener('submit', event => {
+    form.addEventListener('submit', async event => {
       event.preventDefault();
       const username = $('#loginInput').value.trim().toLowerCase();
-      if (!login(username)) {
-        $('#loginError').textContent = '未找到该账号，请使用列表中的演示账号。';
-        return;
+      const errBox = $('#loginError');
+      errBox.textContent = '';
+      try {
+        await login(username);
+        setView('dashboard');
+      } catch (e) {
+        errBox.textContent = e.message || '登录失败，请检查账号名。';
       }
-      $('#loginError').textContent = '';
-      setView('dashboard');
     });
   }
 
@@ -1282,12 +1414,17 @@
       return;
     }
     try {
-      await apiCall('POST', `/splits/${splitId}/mark-paid`);
+      const r = await apiCall('POST', `/splits/${splitId}/mark-paid`);
+      // 用后端返回值更新本地
+      if (r && r.split) {
+        split.paidStatus = r.split.paidStatus;
+      } else {
+        split.paidStatus = 'paid';
+      }
     } catch (e) {
-      console.warn('[splits] mark-paid api failed, fallback to local:', e.message);
+      alert(`标记已付失败：${e.message}`);
+      throw e;  // 上层捕获
     }
-    split.paidStatus = 'paid';
-    persistData();
   }
 
   // 物资状态更新（成员点击二态切换：未确认 ↔ 已确认）
@@ -1301,7 +1438,6 @@
         if (!item) return;
         const current = SPARTAN_HUB.gearStatusByUser[me.id]?.[name] ?? 0;
         const next = current === 1 ? 0 : 1; // 二态切换：0 ↔ 1
-        // 调后端
         const items = SPARTAN_HUB.publicGear.map(g => {
           const s = g.name === name ? next : (SPARTAN_HUB.gearStatusByUser[me.id]?.[g.name] ?? 0);
           return { itemName: g.name, level: g.level, status: s };
@@ -1309,11 +1445,11 @@
         try {
           await apiCall('PUT', `/members/${me.id}/gear`, { items });
         } catch (err) {
-          console.warn('[gear] put api failed, fallback:', err.message);
+          alert(`物资状态保存失败：${err.message}`);
+          return;
         }
-        if (!SPARTAN_HUB.gearStatusByUser[me.id]) SPARTAN_HUB.gearStatusByUser[me.id] = {};
-        SPARTAN_HUB.gearStatusByUser[me.id][name] = next;
-        persistData();
+        // 成功：从服务端拉最新
+        await refreshFromBackend();
         render();
       };
       card.addEventListener('click', handler);
@@ -1337,12 +1473,19 @@
         try {
           if (task.id) {
             await apiCall('PATCH', `/tasks/${task.id}`, { done });
+          } else {
+            // 没有 id（仅本地）→ POST 创建
+            await apiCall('POST', `/members/${mid}/tasks`, { title: task.title, done });
           }
         } catch (err) {
-          console.warn('[tasks] patch api failed, fallback:', err.message);
+          alert(`任务保存失败：${err.message}`);
+          // 回滚 UI
+          event.target.checked = !done;
+          return;
         }
-        task.done = done;
-        persistData();
+        // 成功：从服务端拉最新（防 desync）
+        await refreshFromBackend();
+        render();
       });
     });
   }
@@ -1393,8 +1536,11 @@
     document.querySelectorAll('[data-mark-paid]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.getAttribute('data-mark-paid');
-        await markSplitPaid(id);
-        render();
+        try {
+          await markSplitPaid(id);
+          await refreshFromBackend();
+          render();
+        } catch (e) { /* alert 已在 markSplitPaid 触发 */ }
       });
     });
   }
@@ -1421,11 +1567,10 @@
         try {
           await apiCall('DELETE', `/expense-items/${id}`);
         } catch (err) {
-          console.warn('[expense] delete api failed, fallback:', err.message);
+          alert(`删除失败：${err.message}`);
+          return;
         }
-        SPARTAN_HUB.expenseItems = SPARTAN_HUB.expenseItems.filter(i => i.id !== id);
-        SPARTAN_HUB.expenseSplits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId !== id);
-        persistData();
+        await refreshFromBackend();
         render();
       });
     });
@@ -1557,66 +1702,29 @@
         newSplits.push({ memberId: mid, amountCents: amt });
       });
 
-      let targetItemId;
       try {
+        let targetItemId;
         if (item) {
-          // 编辑：PATCH
           const r = await apiCall('PATCH', `/expense-items/${item.id}`, {
             title, category, amountCents: amount, status, note
           });
           targetItemId = r.item.id;
         } else {
-          // 新增：POST
           const r = await apiCall('POST', `/expense-items`, {
             title, category, amountCents: amount, status, note
           });
           targetItemId = r.item.id;
         }
-        // 同步分摊到后端
         if (newSplits.length > 0) {
           await apiCall('POST', `/expense-items/${targetItemId}/splits`, { splits: newSplits });
         }
       } catch (err) {
-        console.warn('[expense] save api failed, fallback to local:', err.message);
-        // 本地 fallback
-        if (item) {
-          Object.assign(item, { title, category, amountCents: amount, status, note });
-          targetItemId = item.id;
-          SPARTAN_HUB.expenseSplits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId !== targetItemId);
-        } else {
-          targetItemId = 'ei-local-' + Date.now();
-          SPARTAN_HUB.expenseItems.push({ id: targetItemId, title, category, amountCents: amount, status, note, createdBy: 'a1' });
-        }
-        newSplits.forEach(s => {
-          SPARTAN_HUB.expenseSplits.push({
-            id: 'sp-local-' + Date.now() + '-' + s.memberId,
-            itemId: targetItemId,
-            memberId: s.memberId,
-            amountCents: s.amountCents,
-            paidStatus: 'unpaid'
-          });
-        });
+        alert(`保存失败：${err.message}\n请检查名称、金额、类别是否合法`);
+        return;
       }
 
-      // 同步本地状态
-      if (item) {
-        Object.assign(item, { title, category, amountCents: amount, status, note });
-      } else if (!SPARTAN_HUB.expenseItems.find(i => i.id === targetItemId)) {
-        SPARTAN_HUB.expenseItems.push({ id: targetItemId, title, category, amountCents: amount, status, note, createdBy: 'a1' });
-      }
-      // 重置本地分摊
-      SPARTAN_HUB.expenseSplits = SPARTAN_HUB.expenseSplits.filter(s => s.itemId !== targetItemId);
-      newSplits.forEach(s => {
-        SPARTAN_HUB.expenseSplits.push({
-          id: 'sp-' + targetItemId + '-' + s.memberId,
-          itemId: targetItemId,
-          memberId: s.memberId,
-          amountCents: s.amountCents,
-          paidStatus: 'unpaid'
-        });
-      });
-
-      persistData();
+      // 成功：从服务端拉最新
+      await refreshFromBackend();
       closeModal();
       render();
     });
@@ -1661,15 +1769,17 @@
         const idx = Number(btn.getAttribute('data-del-ann'));
         if (!confirm('确认删除该公告？')) return;
         const ann = SPARTAN_HUB.announcements[idx];
-        try {
-          if (ann && ann.id) {
-            await apiCall('DELETE', `/announcements/${ann.id}`);
-          }
-        } catch (err) {
-          console.warn('[ann] delete api failed, fallback:', err.message);
+        if (!ann || !ann.id) {
+          alert('该公告无服务端 ID，无法删除（可能是历史残留）');
+          return;
         }
-        SPARTAN_HUB.announcements.splice(idx, 1);
-        persistData();
+        try {
+          await apiCall('DELETE', `/announcements/${ann.id}`);
+        } catch (err) {
+          alert(`删除失败：${err.message}`);
+          return;
+        }
+        await refreshFromBackend();
         render();
       });
     });
@@ -1733,25 +1843,25 @@
       const time = $('#annTime').value || new Date().toISOString().slice(0,10);
       if (!title) { alert('标题必填'); return; }
 
-      if (editing) {
-        const ann = SPARTAN_HUB.announcements[idx];
-        try {
+      try {
+        if (editing) {
+          const ann = SPARTAN_HUB.announcements[idx];
           if (ann.id) {
             await apiCall('PATCH', `/announcements/${ann.id}`, { title, body, priority, time });
+          } else {
+            // 没有 id 说明是本地残数据 → 当新增
+            await apiCall('POST', `/announcements`, { title, body, priority, scope: 'public', pinned: priority === 'high' });
           }
-        } catch (err) {
-          console.warn('[ann] patch api failed, fallback:', err.message);
-        }
-        Object.assign(ann, { title, body, priority, time });
-      } else {
-        try {
+        } else {
           await apiCall('POST', `/announcements`, { title, body, priority, scope: 'public', pinned: priority === 'high' });
-        } catch (err) {
-          console.warn('[ann] post api failed, fallback:', err.message);
         }
-        SPARTAN_HUB.announcements.unshift({ title, body, priority, time, id: 'local-' + Date.now() });
+      } catch (err) {
+        alert(`公告保存失败：${err.message}`);
+        return;
       }
-      persistData();
+
+      // 成功：从服务端拉最新
+      await refreshFromBackend();
       modal.innerHTML = '';
       render();
     });
@@ -1788,12 +1898,38 @@
     }
   }
 
-  function init() {
-    restoreData();
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && SPARTAN_HUB.users[saved]) state.user = saved;
+  async function init() {
     bindDelegatedClicks();
     bindNavToggle();
+
+    // 1. 验证后端 session（修 BUG-08）
+    try {
+      const me = await apiCall('GET', '/auth/me');
+      if (me && me.user && me.user.username) {
+        state.user = me.user.username;
+        // 同步当前用户对象
+        SPARTAN_HUB.users[state.user] = {
+          id: me.user.id,
+          name: me.user.display,
+          display: me.user.display,
+          role: me.user.role,
+          group: me.user.group,
+          username: state.user
+        };
+        persist();
+      }
+    } catch (_) {
+      // 未登录或 token 失效 → 清掉 localStorage 登录态
+      state.user = null;
+      localStorage.removeItem(STORAGE_KEY);
+    }
+
+    // 2. 已登录：拉取全量数据（修 BUG-03 / BUG-05）
+    if (state.user) {
+      await refreshFromBackend();
+    }
+
+    // 3. 渲染
     render();
     if (window.SpartanWeather) window.SpartanWeather.loadAndRender();
   }

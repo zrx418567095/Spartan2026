@@ -86,12 +86,13 @@ router.post('/', auth.requireAdmin, (req, res) => {
   if (existing) {
     return res.status(409).json({ error: 'conflict', message: 'ID 或登录名已存在' });
   }
-  const now = db.now();
+  const ts = db.now();
   db.get().prepare(`
     INSERT INTO members (id, username, display, group_name, role, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, String(username).toLowerCase(), String(display).trim(), group || '未分组', role || 'member', now, now);
+  `).run(id, String(username).toLowerCase(), String(display).trim(), group || '未分组', role || 'member', ts, ts);
   const created = db.get().prepare('SELECT * FROM members WHERE id = ?').get(id);
+  db.auditLog(req.user.id, 'member.create', id, null, { username, display, group, role }, req);
   res.status(201).json({ member: row(created) });
 });
 
@@ -114,10 +115,15 @@ router.patch('/:id', auth.requireAdmin, (req, res) => {
     updates.push('role = ?'); args.push(role);
   }
   if (updates.length === 0) return res.json({ member: row(exist) });
-  updates.push('updated_at = ?'); args.push(db.now());
+  const ts = db.now();
+  updates.push('updated_at = ?'); args.push(ts);
   args.push(id);
   db.get().prepare(`UPDATE members SET ${updates.join(', ')} WHERE id = ?`).run(...args);
   const updated = db.get().prepare('SELECT * FROM members WHERE id = ?').get(id);
+  db.auditLog(req.user.id, 'member.update', id,
+    { username: exist.username, display: exist.display, group: exist.group_name, role: exist.role },
+    { username, display, group, role },
+    req);
   res.json({ member: row(updated) });
 });
 
@@ -126,9 +132,21 @@ router.delete('/:id', auth.requireAdmin, (req, res) => {
   if (id === 'a1') return res.status(400).json({ error: 'cannot_delete_admin' });
   const exist = db.get().prepare('SELECT id FROM members WHERE id = ? AND archived_at IS NULL').get(id);
   if (!exist) return res.status(404).json({ error: 'not_found' });
-  // 软删除：保留 expense_splits 历史，置 archived_at
-  db.get().prepare('UPDATE members SET archived_at = ?, updated_at = ? WHERE id = ?').run(db.now(), db.now(), id);
-  res.json({ ok: true });
+
+  // 级联归档：成员软删除 + 关联 tasks / gear_status 一并归档
+  // expense_splits 保留历史（不归档，便于审计）
+  const ts = db.now();
+  db.withTransaction(() => {
+    db.get().prepare('UPDATE members SET archived_at = ?, updated_at = ? WHERE id = ?').run(ts, ts, id);
+    db.get().prepare('UPDATE tasks SET archived_at = ?, updated_at = ? WHERE member_id = ? AND archived_at IS NULL').run(ts, ts, id);
+    db.get().prepare('UPDATE gear_status SET updated_at = ? WHERE member_id = ?').run(ts, id);
+    // gear_status 没有 archived_at 字段（status 0/1 已能表示"未确认"），
+    // 这里只更新 updated_at 标记最后变更时间。
+  });
+
+  db.auditLog(req.user.id, 'member.archive', id, null, { archivedAt: ts }, req);
+
+  res.json({ ok: true, archivedAt: ts });
 });
 
 module.exports = router;

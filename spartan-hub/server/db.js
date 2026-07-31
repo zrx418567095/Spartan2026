@@ -55,4 +55,29 @@ function withTransaction(fn) {
 // 工具：时间戳
 const now = () => Math.floor(Date.now() / 1000);
 
-module.exports = { open, close, get, applySchema, withTransaction, now };
+// 写审计日志（成员、费用、公告等关键写操作调用）
+function auditLog(actorId, action, target, before, after, req) {
+  try {
+    const ip = (req && (req.headers['x-forwarded-for'] || req.socket.remoteAddress)) || '';
+    const ua = (req && req.headers['user-agent']) || '';
+    const ts = now();
+    get().prepare(`
+      INSERT INTO audit_log (actor_id, action, target, before, after, ip, ua, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      actorId || null,
+      action,
+      target || null,
+      before != null ? JSON.stringify(before) : null,
+      after != null ? JSON.stringify(after) : null,
+      ip,
+      ua,
+      ts
+    );
+  } catch (e) {
+    // audit 失败不应阻塞主流程
+    console.warn('[audit]', e.message);
+  }
+}
+
+module.exports = { open, close, get, applySchema, withTransaction, now, auditLog };

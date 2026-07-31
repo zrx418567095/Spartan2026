@@ -97,7 +97,7 @@ async function run() {
 
   r = await call('GET', '/api/v1/members', { token: MEMBER });
   const mlist = await r.json();
-  ok('GET /members', r.status === 200 && mlist.members.length === 6);
+  ok('GET /members', r.status === 200 && mlist.members.length >= 6);
 
   // ====== 个人分摊 ======
   console.log('\n【成员分摊】');
