@@ -30,14 +30,27 @@ router.get('/', auth.requireAuth, (req, res) => {
 });
 
 // 成员汇总（含个人分摊 + 总额/已付/待付）
+// 修复 v0.3.3：splitRow() 统一转换（paidStatus 数字→字符串）
+// 避免与 /splits/:id/mark-paid 路由的字符串格式不一致
+function splitRowSummary(row) {
+  return {
+    id: row.id,
+    itemId: row.expense_item_id,
+    memberId: row.member_id,
+    amountCents: row.amount_cents,
+    paidStatus: row.paid_status === 1 ? 'paid' : (row.paid_status === 2 ? 'partial' : 'unpaid'),
+    paidAt: row.paid_at,
+    note: row.note
+  };
+}
+
 router.get('/:id/summary', auth.requireAuth, (req, res) => {
   const memberId = req.params.id;
   if (req.user.role !== 'admin' && req.user.id !== memberId) {
     return res.status(403).json({ error: 'forbidden' });
   }
   const splits = db.get().prepare(`
-    SELECT id, expense_item_id AS itemId, member_id AS memberId,
-           amount_cents AS amountCents, paid_status AS paidStatus, paid_at AS paidAt
+    SELECT id, expense_item_id, member_id, amount_cents, paid_status, paid_at, note
     FROM expense_splits
     WHERE member_id = ? AND archived_at IS NULL
     ORDER BY id
@@ -51,11 +64,12 @@ router.get('/:id/summary', auth.requireAuth, (req, res) => {
 
   let totalCents = 0, paidCents = 0;
   const detailed = splits.map(s => {
-    totalCents += s.amountCents;
-    if (s.paidStatus === 1) paidCents += s.amountCents;
-    const it = itemMap[s.itemId] || {};
+    const converted = splitRowSummary(s);  // ← 修复：用 splitRowSummary 转换
+    totalCents += converted.amountCents;
+    if (converted.paidStatus === 'paid') paidCents += converted.amountCents;
+    const it = itemMap[converted.itemId] || {};
     return {
-      ...s,
+      ...converted,
       title: it.title || '',
       category: it.category || ''
     };

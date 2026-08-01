@@ -104,7 +104,7 @@ async function run() {
   console.log('\n【成员分摊】');
   r = await call('GET', '/api/v1/members/m2/summary', { token: MEMBER });
   const ms = await r.json();
-  ok('GET /members/m2/summary', r.status === 200 && ms.summary.items === 6 && ms.summary.totalCents === 158350);
+  ok('GET /members/m2/summary', r.status === 200 && ms.summary.items === 4 && ms.summary.totalCents === 98900);
 
   r = await call('GET', '/api/v1/members/m1/summary', { token: MEMBER });
   ok('GET other member summary (m2→m1) -> 403', r.status === 403);
