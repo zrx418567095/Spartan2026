@@ -38,7 +38,7 @@ exit /b 0
 :start
 echo Starting server...
 set HOST=0.0.0.0
-start /b cmd /c "set HOST=0.0.0.0 && node index.js" > server.log 2>&1
+start "" /b cmd /c "set HOST=0.0.0.0&& node index.js" > server.log 2>&1
 echo Server started, log: server.log
 echo Access: http://localhost:%PORT%
 exit /b 0
