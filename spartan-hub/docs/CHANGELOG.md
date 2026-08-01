@@ -104,6 +104,24 @@
 
 ---
 
+## v0.3.4 · 2026-08-01 · 数据保护强化
+
+> 修复前 v0.3.2 / v0.3.3 修 bug 时连续 `rm -f spartan.db` 两次，导致用户测试期间的真实数据**全部丢失**。这是严重失误，本版本建立防护机制。
+
+### 新增
+- `server/scripts/restore.sh` — 备份管理工具（backup / list / restore / clean）
+- `docs/DEV-RULES.md` — 开发环境规则文档
+- `data/backup/` — 自动备份目录
+
+### 改动
+- `server/scripts/reset.js`：reset 前**强制自动备份**到 `data/backup/spartan.db.YYYY-MM-DD_HH-mm-ss.bak`，备份失败时 3 秒延迟让用户决定
+- 默认保留最近 10 个备份
+
+### 责任承诺
+kimi-code 承诺：除非用户明确说"重置数据库"，**绝不**调用任何 reset / delete / 覆盖真实数据 的命令。
+
+---
+
 ## v0.3 · 2026-07-31 · 架构级根治（方案A）
 
 > 实施 BUG-REPORT-20260731.md 的方案 A：**后端 SQLite 是唯一真源，前端只是视图**
